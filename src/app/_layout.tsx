@@ -1,18 +1,46 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { useEffect } from "react";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { ThemeProvider } from "../context/ThemeContext";
+import { HabitsProvider } from "../context/HabitsContext";
+import { HabitEntriesProvider } from "../context/HabitEntriesContext";
+import { RoutinesProvider } from "../context/RoutinesContext";
+import { RoutineEntriesProvider } from "../context/RoutineEntriesContext";
+import { useTheme } from "../context/ThemeContext";
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+function AppNavigator() {
+  const { isLoading } = useTheme();
+
+  useEffect(() => {
+    if (!isLoading) {
+      SplashScreen.hide();
+    }
+  }, [isLoading]);
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    />
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <HabitsProvider>
+        <HabitEntriesProvider>
+          <RoutinesProvider>
+            <RoutineEntriesProvider>
+              <AppNavigator />
+            </RoutineEntriesProvider>
+          </RoutinesProvider>
+        </HabitEntriesProvider>
+      </HabitsProvider>
     </ThemeProvider>
   );
 }

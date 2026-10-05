@@ -1,0 +1,769 @@
+import {
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+
+import Svg, {
+  Circle,
+  Defs,
+  LinearGradient,
+  Line,
+  Path,
+  Stop,
+} from "react-native-svg";
+
+// =========================
+// TYPY
+// =========================
+
+export type RegularityChartPoint = {
+  label: string;
+  value: number;
+};
+
+type Props = {
+  data: RegularityChartPoint[];
+  title?: string;
+  periodLabel?: string;
+};
+
+// =========================
+// STAŁE
+// =========================
+
+const CHART_HEIGHT = 158;
+const CHART_TOP_PADDING = 12;
+const CHART_BOTTOM_PADDING = 10;
+const Y_AXIS_WIDTH = 34;
+
+const GRID_VALUES = [100, 75, 50, 25, 0];
+
+// =========================
+// HELPERY
+// =========================
+
+function clampPercentage(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function getY(value: number) {
+  const normalized = clampPercentage(value);
+
+  const usableHeight =
+    CHART_HEIGHT -
+    CHART_TOP_PADDING -
+    CHART_BOTTOM_PADDING;
+
+  return (
+    CHART_TOP_PADDING +
+    usableHeight * (1 - normalized / 100)
+  );
+}
+
+function createLinePath(
+  points: {
+    x: number;
+    y: number;
+  }[]
+) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`;
+  }
+
+  let path =
+    `M ${points[0].x} ${points[0].y}`;
+
+  for (
+    let index = 1;
+    index < points.length;
+    index++
+  ) {
+    const previous = points[index - 1];
+    const current = points[index];
+
+    const middleX =
+      (previous.x + current.x) / 2;
+
+    path +=
+      ` C ${middleX} ${previous.y},` +
+      ` ${middleX} ${current.y},` +
+      ` ${current.x} ${current.y}`;
+  }
+
+  return path;
+}
+
+function createAreaPath(
+  points: {
+    x: number;
+    y: number;
+  }[],
+  bottomY: number
+) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  if (points.length === 1) {
+    const point = points[0];
+
+    return (
+      `M ${point.x} ${point.y} ` +
+      `L ${point.x} ${bottomY} ` +
+      "Z"
+    );
+  }
+
+  const linePath =
+    createLinePath(points);
+
+  const first = points[0];
+
+  const last =
+    points[points.length - 1];
+
+  return (
+    linePath +
+    ` L ${last.x} ${bottomY}` +
+    ` L ${first.x} ${bottomY}` +
+    " Z"
+  );
+}
+
+// =========================
+// COMPONENT
+// =========================
+
+export default function ProgressRegularityChart({
+  data,
+  title = "REGULARNOŚĆ",
+  periodLabel = "7 DNI",
+}: Props) {
+  const {
+    width: screenWidth,
+  } = useWindowDimensions();
+
+  // =========================
+  // SZEROKOŚĆ
+  // =========================
+
+  const availableWidth =
+    Math.max(
+      220,
+      screenWidth - 36 - 32
+    );
+
+  const chartWidth =
+    Math.max(
+      180,
+      availableWidth - Y_AXIS_WIDTH
+    );
+
+  // =========================
+  // ŚREDNIA
+  // =========================
+
+  const average =
+    data.length > 0
+      ? Math.round(
+          data.reduce(
+            (total, point) =>
+              total +
+              clampPercentage(
+                point.value
+              ),
+            0
+          ) / data.length
+        )
+      : 0;
+
+  // =========================
+  // PUNKTY
+  // =========================
+
+  const horizontalPadding =
+    data.length > 1
+      ? 10
+      : chartWidth / 2;
+
+  const usableWidth =
+    Math.max(
+      0,
+      chartWidth -
+        horizontalPadding * 2
+    );
+
+  const points =
+    data.map(
+      (point, index) => {
+        let x =
+          chartWidth / 2;
+
+        if (data.length > 1) {
+          x =
+            horizontalPadding +
+            (usableWidth * index) /
+              (data.length - 1);
+        }
+
+        return {
+          x,
+
+          y: getY(
+            point.value
+          ),
+
+          value:
+            clampPercentage(
+              point.value
+            ),
+
+          label:
+            point.label,
+        };
+      }
+    );
+
+  const linePath =
+    createLinePath(points);
+
+  const areaPath =
+    createAreaPath(
+      points,
+      CHART_HEIGHT -
+        CHART_BOTTOM_PADDING
+    );
+
+  return (
+    <View style={styles.card}>
+      {/* ===================== */}
+      {/* HEADER */}
+      {/* ===================== */}
+
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.title}>
+            {title}
+          </Text>
+
+          <Text style={styles.subtitle}>
+            Wykonanie planu
+          </Text>
+        </View>
+
+        <View style={styles.periodBadge}>
+          <Text style={styles.periodText}>
+            {periodLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* ===================== */}
+      {/* WYKRES */}
+      {/* ===================== */}
+
+      <View style={styles.chartRow}>
+        {/* OŚ Y */}
+
+        <View style={styles.yAxis}>
+          {GRID_VALUES.map(
+            (value) => (
+              <Text
+                key={value}
+                style={styles.yAxisText}
+              >
+                {value}%
+              </Text>
+            )
+          )}
+        </View>
+
+        {/* SVG */}
+
+        <View
+          style={[
+            styles.chartContainer,
+            {
+              width: chartWidth,
+            },
+          ]}
+        >
+          <Svg
+            width={chartWidth}
+            height={CHART_HEIGHT}
+          >
+            <Defs>
+              <LinearGradient
+                id="regularityGradient"
+                x1="0"
+                y1="0"
+                x2="0"
+                y2="1"
+              >
+                <Stop
+                  offset="0"
+                  stopColor="#8B7CF6"
+                  stopOpacity="0.26"
+                />
+
+                <Stop
+                  offset="0.55"
+                  stopColor="#8B7CF6"
+                  stopOpacity="0.08"
+                />
+
+                <Stop
+                  offset="1"
+                  stopColor="#8B7CF6"
+                  stopOpacity="0"
+                />
+              </LinearGradient>
+            </Defs>
+
+            {/* GRID */}
+
+            {GRID_VALUES.map(
+              (value) => {
+                const y =
+                  getY(value);
+
+                return (
+                  <Line
+                    key={value}
+                    x1={0}
+                    y1={y}
+                    x2={chartWidth}
+                    y2={y}
+                    stroke="#292933"
+                    strokeWidth={1}
+                  />
+                );
+              }
+            )}
+
+            {/* WYPEŁNIENIE */}
+
+            {points.length > 1 && (
+              <Path
+                d={areaPath}
+                fill="url(#regularityGradient)"
+              />
+            )}
+
+            {/* LINIA */}
+
+            {points.length > 1 && (
+              <Path
+                d={linePath}
+                fill="none"
+                stroke="#8B7CF6"
+                strokeWidth={3}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
+
+            {/* PUNKTY */}
+
+            {points.map(
+              (point, index) => (
+                <Circle
+                  key={`point-${index}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r={5}
+                  fill="#18181F"
+                  stroke="#A497FF"
+                  strokeWidth={3}
+                />
+              )
+            )}
+          </Svg>
+
+          {/* ETYKIETY X */}
+
+          <View
+            pointerEvents="none"
+            style={styles.xLabels}
+          >
+            {points.map(
+              (point, index) => {
+                const labelWidth =
+                  Math.max(
+                    28,
+                    chartWidth /
+                      Math.max(
+                        1,
+                        points.length
+                      )
+                  );
+
+                return (
+                  <Text
+                    key={`label-${index}`}
+                    numberOfLines={1}
+                    style={[
+                      styles.xAxisText,
+                      {
+                        width:
+                          labelWidth,
+
+                        left:
+                          point.x -
+                          labelWidth /
+                            2,
+                      },
+                    ]}
+                  >
+                    {point.label}
+                  </Text>
+                );
+              }
+            )}
+          </View>
+        </View>
+      </View>
+
+      {/* ===================== */}
+      {/* PODSUMOWANIE */}
+      {/* ===================== */}
+
+      <View style={styles.summary}>
+        <View>
+          <Text
+            style={styles.summaryLabel}
+          >
+            ŚREDNIA
+          </Text>
+
+          <View
+            style={
+              styles.summaryValueRow
+            }
+          >
+            <Text
+              style={styles.summaryValue}
+            >
+              {average}%
+            </Text>
+
+            <View
+              style={
+                styles.averageIndicator
+              }
+            >
+              <View
+                style={
+                  styles.averageDot
+                }
+              />
+
+              <Text
+                style={
+                  styles.averageIndicatorText
+                }
+              >
+                regularności
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View
+          style={styles.summaryRight}
+        >
+          <Text
+            style={styles.summaryInfo}
+          >
+            wykonania
+          </Text>
+
+          <Text
+            style={
+              styles.summaryInfoStrong
+            }
+          >
+            planu
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// =========================
+// STYLE
+// =========================
+
+const styles =
+  StyleSheet.create({
+    card: {
+      backgroundColor: "#18181F",
+
+      borderRadius: 24,
+
+      borderWidth: 1,
+
+      borderColor: "#292932",
+
+      paddingHorizontal: 16,
+
+      paddingTop: 17,
+
+      paddingBottom: 15,
+    },
+
+    // =====================
+    // HEADER
+    // =====================
+
+    header: {
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      justifyContent:
+        "space-between",
+
+      marginBottom: 20,
+    },
+
+    title: {
+      color: "#F4F4F7",
+
+      fontSize: 11,
+
+      fontWeight: "800",
+
+      letterSpacing: 0.9,
+    },
+
+    subtitle: {
+      color: "#74747E",
+
+      fontSize: 9,
+
+      fontWeight: "600",
+
+      marginTop: 4,
+    },
+
+    periodBadge: {
+      minHeight: 28,
+
+      paddingHorizontal: 11,
+
+      borderRadius: 10,
+
+      backgroundColor:
+        "#25222F",
+
+      borderWidth: 1,
+
+      borderColor:
+        "#332E47",
+
+      alignItems: "center",
+
+      justifyContent:
+        "center",
+    },
+
+    periodText: {
+      color: "#A497FF",
+
+      fontSize: 9,
+
+      fontWeight: "800",
+
+      letterSpacing: 0.5,
+    },
+
+    // =====================
+    // CHART
+    // =====================
+
+    chartRow: {
+      flexDirection: "row",
+
+      alignItems:
+        "flex-start",
+    },
+
+    yAxis: {
+      width:
+        Y_AXIS_WIDTH,
+
+      height:
+        CHART_HEIGHT,
+
+      paddingTop:
+        CHART_TOP_PADDING -
+        5,
+
+      paddingBottom:
+        CHART_BOTTOM_PADDING -
+        5,
+
+      justifyContent:
+        "space-between",
+
+      paddingRight: 6,
+    },
+
+    yAxisText: {
+      color: "#62626D",
+
+      fontSize: 8,
+
+      fontWeight: "600",
+
+      textAlign: "right",
+    },
+
+    chartContainer: {
+      height:
+        CHART_HEIGHT + 29,
+
+      position: "relative",
+    },
+
+    // =====================
+    // X LABELS
+    // =====================
+
+    xLabels: {
+      position: "absolute",
+
+      top:
+        CHART_HEIGHT + 8,
+
+      left: 0,
+
+      right: 0,
+
+      height: 20,
+    },
+
+    xAxisText: {
+      position: "absolute",
+
+      color: "#777781",
+
+      fontSize: 8,
+
+      fontWeight: "700",
+
+      textAlign: "center",
+    },
+
+    // =====================
+    // SUMMARY
+    // =====================
+
+    summary: {
+      marginTop: 14,
+
+      paddingTop: 14,
+
+      borderTopWidth: 1,
+
+      borderTopColor:
+        "#292932",
+
+      flexDirection: "row",
+
+      alignItems:
+        "flex-end",
+
+      justifyContent:
+        "space-between",
+    },
+
+    summaryLabel: {
+      color: "#70707A",
+
+      fontSize: 8,
+
+      fontWeight: "800",
+
+      letterSpacing: 0.8,
+    },
+
+    summaryValueRow: {
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      gap: 10,
+
+      marginTop: 3,
+    },
+
+    summaryValue: {
+      color: "#F5F5F7",
+
+      fontSize: 25,
+
+      fontWeight: "800",
+
+      letterSpacing: -0.7,
+    },
+
+    averageIndicator: {
+      flexDirection: "row",
+
+      alignItems: "center",
+
+      gap: 5,
+
+      paddingTop: 5,
+    },
+
+    averageDot: {
+      width: 6,
+
+      height: 6,
+
+      borderRadius: 3,
+
+      backgroundColor:
+        "#8B7CF6",
+    },
+
+    averageIndicatorText: {
+      color: "#777781",
+
+      fontSize: 9,
+
+      fontWeight: "600",
+    },
+
+    summaryRight: {
+      alignItems: "flex-end",
+
+      paddingBottom: 3,
+    },
+
+    summaryInfo: {
+      color: "#686872",
+
+      fontSize: 9,
+    },
+
+    summaryInfoStrong: {
+      color: "#9696A0",
+
+      fontSize: 9,
+
+      fontWeight: "700",
+
+      marginTop: 2,
+    },
+  });
