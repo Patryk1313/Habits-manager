@@ -4,6 +4,8 @@ import * as DocumentPicker from "expo-document-picker";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 
+import { scopedStorageKey } from "../hooks/usePersistentList";
+
 export const BACKUP_APP_ID = "habits-app";
 export const BACKUP_VERSION = 1;
 
@@ -63,11 +65,11 @@ function pickTextOnWeb(): Promise<string | null> {
   });
 }
 
-export async function exportBackup() {
+export async function exportBackup(uid: string) {
   const data = {} as BackupData;
 
   for (const name of Object.keys(BACKUP_KEYS) as (keyof BackupData)[]) {
-    data[name] = await readList(BACKUP_KEYS[name]);
+    data[name] = await readList(scopedStorageKey(BACKUP_KEYS[name], uid));
   }
 
   const backup: BackupFile = {
@@ -162,10 +164,11 @@ export async function pickBackup(): Promise<PickedBackup | null> {
   };
 }
 
-export async function applyBackup(backup: BackupFile) {
+export async function applyBackup(backup: BackupFile, uid: string) {
   // Zachowaj obecne dane, by można je było odzyskać po pomyłce.
   const stamp = Date.now();
-  for (const key of Object.values(BACKUP_KEYS)) {
+  for (const baseKey of Object.values(BACKUP_KEYS)) {
+    const key = scopedStorageKey(baseKey, uid);
     const current = await AsyncStorage.getItem(key);
     if (current !== null) {
       await AsyncStorage.setItem(`${key}:before-import-${stamp}`, current);
@@ -174,7 +177,7 @@ export async function applyBackup(backup: BackupFile) {
 
   await AsyncStorage.multiSet(
     (Object.keys(BACKUP_KEYS) as (keyof BackupData)[]).map((name) => [
-      BACKUP_KEYS[name],
+      scopedStorageKey(BACKUP_KEYS[name], uid),
       JSON.stringify(backup.data[name]),
     ])
   );

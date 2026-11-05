@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AccountSettings from "../../components/settings/AccountSettings";
 import DataSettings from "../../components/settings/DataSettings";
 import {
   accentColors,
@@ -156,6 +157,7 @@ export default function SettingsScreen() {
 
           {tab === "preferences" && (
             <>
+          <AccountSettings />
           {/* ========================= */}
           {/* MOTYW */}
           {/* ========================= */}

@@ -9,6 +9,7 @@ import {
   View,
 } from "react-native";
 
+import { useAuth } from "../../context/AuthContext";
 import { useHabitEntries } from "../../context/HabitEntriesContext";
 import { useHabits } from "../../context/HabitsContext";
 import { useRoutineEntries } from "../../context/RoutineEntriesContext";
@@ -49,6 +50,7 @@ function confirmAction(title: string, message: string, confirmLabel: string) {
 
 export default function DataSettings() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const habits = useHabits();
   const habitEntries = useHabitEntries();
   const routines = useRoutines();
@@ -88,7 +90,7 @@ export default function DataSettings() {
       );
       if (!confirmed) return;
 
-      await applyBackup(backup);
+      await applyBackup(backup, user!.uid);
       await Promise.all([
         habits.reload(),
         habitEntries.reload(),
@@ -133,7 +135,7 @@ export default function DataSettings() {
         </Text>
         <TouchableOpacity
           disabled={busy}
-          onPress={() => run(exportBackup)}
+          onPress={() => run(() => exportBackup(user!.uid))}
           style={[styles.button, { backgroundColor: colors.accent }]}
         >
           <Text style={[styles.buttonText, { color: colors.accentForeground }]}>
