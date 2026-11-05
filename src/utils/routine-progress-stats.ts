@@ -3,7 +3,6 @@ import type { RoutineEntry } from "../context/RoutineEntriesContext";
 import {
   eachDay,
   getDateKey,
-  parseDateKey,
   parseDateTime,
   type ProgressRange,
 } from "./progress-stats";

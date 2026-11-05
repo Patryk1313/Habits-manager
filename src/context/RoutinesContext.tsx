@@ -1,20 +1,17 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import {
   createContext,
   ReactNode,
   useContext,
-  useEffect,
-  useState,
 } from "react";
 
+import { usePersistentList } from "../hooks/usePersistentList";
 import { Routine, RoutineRevision } from "../types/routine";
 
 // =========================
 // ASYNC STORAGE
 // =========================
 
-const ROUTINES_STORAGE_KEY =
+export const ROUTINES_STORAGE_KEY =
   "@habits/routines";
 
 function getDateKey(date: Date) {
@@ -29,6 +26,10 @@ function addDaysToDateKey(dateKey: string, amount: number) {
   const date = new Date(year, month - 1, day);
   date.setDate(date.getDate() + amount);
   return getDateKey(date);
+}
+
+function normalizeRoutines(items: unknown[]): Routine[] {
+  return (items as Routine[]).map(normalizeRoutine);
 }
 
 function normalizeRoutine(routine: Routine): Routine {
@@ -102,6 +103,10 @@ type RoutinesContextType = {
 
   isLoading: boolean;
 
+  loadFailed: boolean;
+
+  reload: () => Promise<void>;
+
   addRoutine: (
     routine: Routine
   ) => void;
@@ -147,74 +152,16 @@ type RoutinesProviderProps = {
 export function RoutinesProvider({
   children,
 }: RoutinesProviderProps) {
-  const [
-    routines,
-    setRoutines,
-  ] = useState<Routine[]>([]);
-
-  const [
+  const {
+    items: routines,
+    setItems: setRoutines,
     isLoading,
-    setIsLoading,
-  ] = useState(true);
-
-  // =========================
-  // WCZYTYWANIE
-  // =========================
-
-  useEffect(() => {
-    const loadRoutines = async () => {
-      try {
-        const storedRoutines =
-          await AsyncStorage.getItem(
-            ROUTINES_STORAGE_KEY
-          );
-
-        if (storedRoutines) {
-          const parsedRoutines: Routine[] =
-            JSON.parse(storedRoutines);
-
-          setRoutines(
-            parsedRoutines.map(normalizeRoutine)
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Błąd podczas wczytywania rutyn:",
-          error
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadRoutines();
-  }, []);
-
-  // =========================
-  // AUTOMATYCZNY ZAPIS
-  // =========================
-
-  useEffect(() => {
-    if (isLoading) {
-      return;
-    }
-
-    const saveRoutines = async () => {
-      try {
-        await AsyncStorage.setItem(
-          ROUTINES_STORAGE_KEY,
-          JSON.stringify(routines)
-        );
-      } catch (error) {
-        console.error(
-          "Błąd podczas zapisywania rutyn:",
-          error
-        );
-      }
-    };
-
-    saveRoutines();
-  }, [routines, isLoading]);
+    loadFailed,
+    reload,
+  } = usePersistentList<Routine>(
+    ROUTINES_STORAGE_KEY,
+    normalizeRoutines
+  );
 
   // =========================
   // DODAWANIE
@@ -372,6 +319,8 @@ export function RoutinesProvider({
         routines,
 
         isLoading,
+        loadFailed,
+        reload,
 
         addRoutine,
 

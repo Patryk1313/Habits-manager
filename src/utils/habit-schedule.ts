@@ -22,22 +22,32 @@ function getDateKey(date: Date) {
 }
 
 // =========================
-// YYYY-MM-DD → LOCAL DATE
+// ISO → LOCAL DATE
 // =========================
 
 function parseLocalDate(
-  dateString: string
+  value: string
 ) {
-  const [year, month, day] =
-    dateString
-      .slice(0, 10)
-      .split("-")
-      .map(Number);
+  const date = new Date(value);
 
   return new Date(
-    year,
-    month - 1,
-    day
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate()
+  );
+}
+
+export function wasHabitCreatedByDate(
+  createdAt: string | undefined,
+  selectedDate: Date
+) {
+  if (!createdAt) {
+    return true;
+  }
+
+  return (
+    getDateKey(selectedDate) >=
+    getDateKey(parseLocalDate(createdAt))
   );
 }
 

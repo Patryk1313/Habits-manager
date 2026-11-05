@@ -15,8 +15,6 @@ import { useHabits } from "../../context/HabitsContext";
 import { useHabitEntries } from "../../context/HabitEntriesContext";
 import { useRoutines } from "../../context/RoutinesContext";
 import { useRoutineEntries } from "../../context/RoutineEntriesContext";
-import type { Habit } from "../../types/habit";
-import type { WeekDay } from "../../components/FrequencyPicker";
 import ProgressHabitBreakdown from "../../components/ProgressHabitBreakdown";
 import type { ProgressBreakdownRow } from "../../components/ProgressHabitBreakdown";
 import ProgressRegularityChart from "../../components/ProgressRegularityChart";
@@ -24,9 +22,19 @@ import ProgressVolumeChart from "../../components/ProgressVolumeChart";
 import type { ProgressVolumePoint } from "../../components/ProgressVolumeChart";
 import ProgressActivityHeatmap from "../../components/ProgressActivityHeatmap";
 import {
+  addDays,
   calculateDailyProgressStats,
   calculateHabitBestStreak,
-  getTimesPerWeekStats,
+  calculateProgressStats,
+  differenceInDays,
+  getDateKey,
+  eachDay,
+  getHabitStart,
+  minDate,
+  parseDateKey,
+  parseDateTime,
+  startOfDay,
+  startOfWeekMonday,
 } from "../../utils/progress-stats";
 import {
   calculateRoutineDailyProgressStats,
@@ -48,167 +56,12 @@ type Range = {
   start: Date;
   end: Date;
 };
-type PeriodStats = {
-  expected: number;
-  completed: number;
-  successRate: number;
-  activeDays: number;
-};
 // =========================
 // STAŁE
 // =========================
-const DAY_MS =
-  24 * 60 * 60 * 1000;
-const WEEK_DAY_MAP: Record<
-  number,
-  WeekDay
-> = {
-  0: "sun",
-  1: "mon",
-  2: "tue",
-  3: "wed",
-  4: "thu",
-  5: "fri",
-  6: "sat",
-};
 // =========================
 // DATY
 // =========================
-function startOfDay(
-  date: Date
-) {
-  const result =
-    new Date(date);
-  result.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-  return result;
-}
-function parseDateKey(
-  value: string
-) {
-  return startOfDay(
-    new Date(
-      `${value}T00:00:00`
-    )
-  );
-}
-function parseDateTime(
-  value: string
-) {
-  return startOfDay(
-    new Date(value)
-  );
-}
-function getDateKey(
-  date: Date
-) {
-  const year =
-    date.getFullYear();
-  const month =
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-  const day =
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
-  return `${year}-${month}-${day}`;
-}
-function addDays(
-  date: Date,
-  amount: number
-) {
-  const result =
-    new Date(date);
-  result.setDate(
-    result.getDate() +
-      amount
-  );
-  return startOfDay(
-    result
-  );
-}
-function differenceInDays(
-  later: Date,
-  earlier: Date
-) {
-  const laterUtc =
-    Date.UTC(
-      later.getFullYear(),
-      later.getMonth(),
-      later.getDate()
-    );
-  const earlierUtc =
-    Date.UTC(
-      earlier.getFullYear(),
-      earlier.getMonth(),
-      earlier.getDate()
-    );
-  return Math.round(
-    (laterUtc -
-      earlierUtc) /
-      DAY_MS
-  );
-}
-function minDate(
-  first: Date,
-  second: Date
-) {
-  return first <
-    second
-    ? first
-    : second;
-}
-function startOfWeekMonday(
-  date: Date
-) {
-  const result =
-    startOfDay(date);
-  const day =
-    result.getDay();
-  const distance =
-    day === 0
-      ? -6
-      : 1 - day;
-  return addDays(
-    result,
-    distance
-  );
-}
-function eachDay(
-  start: Date,
-  end: Date
-) {
-  const result: Date[] =
-    [];
-  let current =
-    startOfDay(start);
-  const last =
-    startOfDay(end);
-  while (
-    current <= last
-  ) {
-    result.push(
-      current
-    );
-    current =
-      addDays(
-        current,
-        1
-      );
-  }
-  return result;
-}
 function createProgressBuckets(range: Range) {
   const totalDays =
     differenceInDays(range.end, range.start) + 1;
@@ -292,393 +145,20 @@ function getDateAxisLabel(date: Date) {
 // =========================
 // ŻYCIE NAWYKU
 // =========================
-function getHabitStart(
-  habit: Habit
-) {
-  return parseDateTime(
-    habit.createdAt
-  );
-}
-function getHabitEnd(
-  habit: Habit
-) {
-  if (
-    habit.archived &&
-    habit.archivedAt
-  ) {
-    return parseDateTime(
-      habit.archivedAt
-    );
-  }
-  return null;
-}
-function isHabitAliveOnDate(
-  habit: Habit,
-  date: Date
-) {
-  const habitStart =
-    getHabitStart(
-      habit
-    );
-  if (
-    date < habitStart
-  ) {
-    return false;
-  }
-  const habitEnd =
-    getHabitEnd(
-      habit
-    );
-  if (
-    habitEnd &&
-    date > habitEnd
-  ) {
-    return false;
-  }
-  return true;
-}
 // =========================
 // HARMONOGRAM
 // =========================
-function isScheduledDay(
-  habit: Habit,
-  date: Date
-) {
-  if (
-    !isHabitAliveOnDate(
-      habit,
-      date
-    )
-  ) {
-    return false;
-  }
-  const frequency =
-    habit.frequency;
-  // =====================
-  // CODZIENNIE
-  // =====================
-  if (
-    frequency.type ===
-    "daily"
-  ) {
-    return true;
-  }
-  // =====================
-  // WYBRANE DNI
-  // =====================
-  if (
-    frequency.type ===
-    "selectedDays"
-  ) {
-    const weekDay =
-      WEEK_DAY_MAP[
-        date.getDay()
-      ];
-    return frequency.selectedDays.includes(
-      weekDay
-    );
-  }
-  // =====================
-  // INTERWAŁ
-  // =====================
-  if (
-    frequency.type ===
-    "interval"
-  ) {
-    const interval =
-      Math.max(
-        1,
-        frequency.intervalDays
-      );
-    const habitStart =
-      getHabitStart(
-        habit
-      );
-    const difference =
-      differenceInDays(
-        date,
-        habitStart
-      );
-    return (
-      difference >= 0 &&
-      difference %
-        interval ===
-        0
-    );
-  }
-  // =====================
-  // X RAZY W TYGODNIU
-  // =====================
-  //
-  // Ten tryb nie posiada
-  // konkretnych dni.
-  //
-  // Jest liczony osobno
-  // jako cel tygodniowy.
-  // =====================
-  return false;
-}
 // =========================
 // WPIS WYKONANIA
 // =========================
-function hasCompletedEntry(
-  entries: {
-    habitId: string;
-    date: string;
-    completed: boolean;
-  }[],
-  habitId: string,
-  date: Date
-) {
-  const key =
-    getDateKey(date);
-  return entries.some(
-    (entry) =>
-      entry.habitId ===
-        habitId &&
-      entry.date === key &&
-      entry.completed
-  );
-}
 // =========================
 // X RAZY W TYGODNIU
 // =========================
 // =========================
 // STATYSTYKI OKRESU
 // =========================
-function calculatePeriodStats(
-  habits: Habit[],
-  entries: {
-    habitId: string;
-    date: string;
-    completed: boolean;
-  }[],
-  range: Range
-): PeriodStats {
-  let expected = 0;
-  let completed = 0;
-  const activeDateKeys =
-    new Set <string>();
-  for (
-    const habit of habits
-  ) {
-    // =====================
-    // X RAZY W TYGODNIU
-    // =====================
-    if (
-      habit.frequency
-        .type ===
-      "timesPerWeek"
-    ) {
-      const stats =
-        getTimesPerWeekStats(
-          habit,
-          range,
-          entries
-        );
-      expected +=
-        stats.expected;
-      completed +=
-        stats.completed;
-      continue;
-    }
-    // =====================
-    // POZOSTAŁE HARMONOGRAMY
-    // =====================
-    const days =
-      eachDay(
-        range.start,
-        range.end
-      );
-    for (
-      const date of days
-    ) {
-      if (
-        !isScheduledDay(
-          habit,
-          date
-        )
-      ) {
-        continue;
-      }
-      expected += 1;
-      if (
-        hasCompletedEntry(
-          entries,
-          habit.id,
-          date
-        )
-      ) {
-        completed += 1;
-      }
-    }
-  }
-  // =====================
-  // AKTYWNE DNI
-  // =====================
-  for (
-    const entry of entries
-  ) {
-    if (
-      !entry.completed
-    ) {
-      continue;
-    }
-    const entryDate =
-      parseDateKey(
-        entry.date
-      );
-    if (
-      entryDate <
-        range.start ||
-      entryDate >
-        range.end
-    ) {
-      continue;
-    }
-    const habit =
-      habits.find(
-        (item) =>
-          item.id ===
-          entry.habitId
-      );
-    if (!habit) {
-      continue;
-    }
-    if (
-      !isHabitAliveOnDate(
-        habit,
-        entryDate
-      )
-    ) {
-      continue;
-    }
-    activeDateKeys.add(
-      entry.date
-    );
-  }
-  const successRate =
-    expected > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (completed /
-              expected) *
-              100
-          )
-        )
-      : 0;
-  return {
-    expected,
-    completed,
-    successRate,
-    activeDays:
-      activeDateKeys.size,
-  };
-}
 
-function getTimesPerWeekDailyVolumeStats(
-  habit: Habit,
-  date: Date,
-  entries: {
-    habitId: string;
-    date: string;
-    completed: boolean;
-  }[]
-) {
-  if (
-    !isHabitAliveOnDate(
-      habit,
-      date
-    )
-  ) {
-    return {
-      expected: 0,
-      completed: 0,
-    };
-  }
 
-  const weekStart = startOfWeekMonday(date);
-  const target = Math.max(1, habit.frequency.timesPerWeek);
-  const completed = Math.min(
-    target,
-    entries.filter((entry) => {
-      if (entry.habitId !== habit.id || !entry.completed) {
-        return false;
-      }
-
-      const entryDate = parseDateKey(entry.date);
-      return entryDate >= weekStart && entryDate <= date;
-    }).length
-  );
-
-  return {
-    expected: target,
-    completed,
-  };
-}
-
-function calculateDailyVolumeStats(
-  habits: Habit[],
-  entries: {
-    habitId: string;
-    date: string;
-    completed: boolean;
-  }[],
-  date: Date
-) {
-  let expected = 0;
-  let completed = 0;
-
-  for (
-    const habit of habits
-  ) {
-    if (
-      habit.frequency
-        .type ===
-      "timesPerWeek"
-    ) {
-      const stats =
-        getTimesPerWeekDailyVolumeStats(
-          habit,
-          date,
-          entries
-        );
-
-      expected +=
-        stats.expected;
-      completed +=
-        stats.completed;
-      continue;
-    }
-
-    if (
-      !isScheduledDay(
-        habit,
-        date
-      )
-    ) {
-      continue;
-    }
-
-    expected += 1;
-
-    if (
-      hasCompletedEntry(
-        entries,
-        habit.id,
-        date
-      )
-    ) {
-      completed += 1;
-    };
-  }
-
-  return {
-    expected,
-    completed,
-  };
-}
 
 function calculateSuccessRateFromCounts(stats: {
   expected: number;
@@ -702,32 +182,17 @@ function calculateChange(
   current: number,
   previous: number
 ) {
-  if (
-    current === 0 &&
-    previous === 0
-  ) {
-    return 0;
-  }
-  if (
-    previous === 0
-  ) {
-    return current > 0
-      ? 100
-      : 0;
-  }
-  return Math.round(
-    ((current -
-      previous) /
-      previous) *
-      100
-  );
+  // Różnica bezwzględna: unika zawyżonych wartości, gdy poprzedni okres był prawie pusty.
+  return Math.round(current - previous);
 }
 function Trend({
   value,
   styles,
+  suffix = "%",
 }: {
   value: number;
   styles: ReturnType<typeof createStyles>;
+  suffix?: string;
 }) {
   if (
     value === 0
@@ -738,7 +203,7 @@ function Trend({
           styles.trendNeutral
         }
       >
-        — 0%
+        — 0{suffix}
       </Text>
     );
   }
@@ -757,7 +222,7 @@ function Trend({
         : "↓"}{" "}
       {Math.abs(
         value
-      )}%
+      )}{suffix}
     </Text>
   );
 }
@@ -905,7 +370,7 @@ export default function ProgressScreen() {
   const currentStats =
     useMemo(
       () =>
-        calculatePeriodStats(
+        calculateProgressStats(
           habits,
           entries,
           ranges.active
@@ -928,7 +393,7 @@ export default function ProgressScreen() {
       ) {
         return null;
       }
-      return calculatePeriodStats(
+      return calculateProgressStats(
         habits,
         entries,
         ranges.previous
@@ -1052,12 +517,12 @@ export default function ProgressScreen() {
       chartBuckets.map((bucket, index) => {
         const stats =
           period === "week"
-            ? calculateDailyVolumeStats(
+            ? calculateDailyProgressStats(
                 habits,
                 entries,
                 bucket.start
               )
-            : calculatePeriodStats(
+            : calculateProgressStats(
                 habits,
                 entries,
                 bucket
@@ -1077,12 +542,12 @@ export default function ProgressScreen() {
       chartBuckets.map((bucket, index) => {
         const stats =
           period === "week"
-            ? calculateDailyVolumeStats(
+            ? calculateDailyProgressStats(
                 habits,
                 entries,
                 bucket.start
               )
-            : calculatePeriodStats(
+            : calculateProgressStats(
                 habits,
                 entries,
                 bucket
@@ -1110,9 +575,16 @@ export default function ProgressScreen() {
     const totalDays =
       differenceInDays(range.end, range.start) + 1;
     const buckets = createProgressBuckets(range);
+    const todayStart = startOfDay(new Date());
+    const todayKey = getDateKey(todayStart);
+    const doneToday = new Set(
+      entries
+        .filter((entry) => entry.completed && entry.date === todayKey)
+        .map((entry) => entry.habitId)
+    );
 
     return habits.map((habit) => {
-      const stats = calculatePeriodStats(
+      const stats = calculateProgressStats(
         [habit],
         entries,
         range
@@ -1137,10 +609,18 @@ export default function ProgressScreen() {
             ? stats.completed / totalDays
             : 0,
         trend: buckets.map((bucket) => {
-          const bucketStats = calculatePeriodStats(
+          // Dzisiejszy, jeszcze nieodhaczony dzień nie jest porażką - dzień się nie skończył.
+          const end =
+            bucket.end >= todayStart && !doneToday.has(habit.id)
+              ? addDays(todayStart, -1)
+              : bucket.end;
+          if (end < bucket.start) {
+            return null;
+          }
+          const bucketStats = calculateProgressStats(
             [habit],
             entries,
-            bucket
+            { start: bucket.start, end }
           );
           return bucketStats.expected > 0
             ? bucketStats.successRate
@@ -1667,9 +1147,7 @@ export default function ProgressScreen() {
               </Text>
             </View>
           </View>
-          {/* ===================== */}
-          {/* REGULARNOŚĆ */}
-          {/* ===================== */}
+
           <View style={styles.regularitySection}>
             <ProgressRegularityChart
               data={regularityChartData}
@@ -1688,11 +1166,7 @@ export default function ProgressScreen() {
           <ProgressHabitBreakdown
             rows={habitBreakdownRows}
             periodLabel={regularityPeriodLabel}
-            showStreak
           />
-          {/* ===================== */}
-          {/* HEATMAPA AKTYWNOŚCI */}
-          {/* ===================== */}
           <View style={styles.heatmapSection}>
             <ProgressActivityHeatmap
               data={heatmapData}
@@ -1709,7 +1183,7 @@ export default function ProgressScreen() {
               <View style={styles.mainCard}>
                 <View style={styles.mainCardTop}>
                   <View>
-                    <Text style={styles.cardLabel}>SKUTECZNOŚĆ KROKÓW</Text>
+                    <Text style={styles.cardLabel}>SKUTECZNOŚĆ</Text>
                     <View style={styles.valueRow}>
                       <Text style={styles.mainValue}>
                         {routineCurrentStats.successRate}%

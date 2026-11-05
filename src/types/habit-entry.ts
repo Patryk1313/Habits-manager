@@ -42,6 +42,12 @@ export type HabitEntry = {
   // CZAS
   // =========================
 
+  /**
+   * Moment oznaczenia nawyku jako wykonany (ISO).
+   * null / brak = niewykonany lub wpis sprzed wprowadzenia tego pola.
+   */
+  completedAt?: string | null;
+
   createdAt: string;
 
   updatedAt: string;

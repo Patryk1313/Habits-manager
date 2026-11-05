@@ -1,10 +1,33 @@
 import type {
+  HabitFrequency,
   WeekDay,
 } from "../components/FrequencyPicker";
+import type { Habit } from "../types/habit";
+import {
+  addDays,
+  differenceInDays,
+  eachDay,
+  getDateKey,
+  maxDate,
+  minDate,
+  parseDateKey,
+  parseDateTime,
+  startOfDay,
+  startOfWeekMonday,
+} from "./date";
 
-import type {
-  Habit,
-} from "../types/habit";
+export {
+  addDays,
+  differenceInDays,
+  eachDay,
+  getDateKey,
+  maxDate,
+  minDate,
+  parseDateKey,
+  parseDateTime,
+  startOfDay,
+  startOfWeekMonday,
+};
 
 // =========================
 // TYPY
@@ -12,421 +35,279 @@ import type {
 
 export type ProgressEntry = {
   habitId: string;
-
   date: string;
-
   completed: boolean;
+  completedAt?: string | null;
 };
 
 export type ProgressRange = {
   start: Date;
-
   end: Date;
 };
 
 export type ProgressStats = {
   expected: number;
-
   completed: number;
-
   successRate: number;
-
   activeDays: number;
 };
 
 export type DailyProgressStats = {
   date: Date;
-
   dateKey: string;
-
   expected: number;
-
   completed: number;
-
   successRate: number;
-
   hasActivity: boolean;
+};
+
+export type OnTimeStats = {
+  eligible: number;
+  onTime: number;
+  rate: number;
+};
+
+export type HabitSegment = {
+  start: Date;
+  // null = bez końca
+  end: Date | null;
+  frequency: HabitFrequency;
+  // Punkt odniesienia dla interwałów.
+  anchor: Date;
 };
 
 // =========================
 // STAŁE
 // =========================
 
-const DAY_MS =
-  24 * 60 * 60 * 1000;
-
-const WEEK_DAY_MAP: Record<
-  number,
-  WeekDay
-> = {
+const WEEK_DAY_MAP: Record<number, WeekDay> = {
   0: "sun",
-
   1: "mon",
-
   2: "tue",
-
   3: "wed",
-
   4: "thu",
-
   5: "fri",
-
   6: "sat",
 };
 
-// =========================
-// DATY
-// =========================
-
-export function startOfDay(
-  date: Date
-) {
-  const result =
-    new Date(date);
-
-  result.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  return result;
-}
-
-export function parseDateKey(
-  value: string
-) {
-  return startOfDay(
-    new Date(
-      `${value}T00:00:00`
-    )
-  );
-}
-
-export function parseDateTime(
-  value: string
-) {
-  return startOfDay(
-    new Date(value)
-  );
-}
-
-export function getDateKey(
-  date: Date
-) {
-  const year =
-    date.getFullYear();
-
-  const month =
-    String(
-      date.getMonth() + 1
-    ).padStart(
-      2,
-      "0"
-    );
-
-  const day =
-    String(
-      date.getDate()
-    ).padStart(
-      2,
-      "0"
-    );
-
-  return `${year}-${month}-${day}`;
-}
-
-export function addDays(
-  date: Date,
-  amount: number
-) {
-  const result =
-    new Date(date);
-
-  result.setDate(
-    result.getDate() +
-      amount
-  );
-
-  return startOfDay(
-    result
-  );
-}
-
-export function differenceInDays(
-  later: Date,
-  earlier: Date
-) {
-  const laterUtc =
-    Date.UTC(
-      later.getFullYear(),
-      later.getMonth(),
-      later.getDate()
-    );
-
-  const earlierUtc =
-    Date.UTC(
-      earlier.getFullYear(),
-      earlier.getMonth(),
-      earlier.getDate()
-    );
-
-  return Math.round(
-    (laterUtc -
-      earlierUtc) /
-      DAY_MS
-  );
-}
-
-export function maxDate(
-  first: Date,
-  second: Date
-) {
-  return first >
-    second
-    ? first
-    : second;
-}
-
-export function minDate(
-  first: Date,
-  second: Date
-) {
-  return first <
-    second
-    ? first
-    : second;
-}
-
-export function startOfWeekMonday(
-  date: Date
-) {
-  const result =
-    startOfDay(
-      date
-    );
-
-  const day =
-    result.getDay();
-
-  const distance =
-    day === 0
-      ? -6
-      : 1 - day;
-
-  return addDays(
-    result,
-    distance
-  );
-}
-
-export function eachDay(
-  start: Date,
-  end: Date
-) {
-  const result: Date[] =
-    [];
-
-  let current =
-    startOfDay(
-      start
-    );
-
-  const last =
-    startOfDay(
-      end
-    );
-
-  while (
-    current <= last
-  ) {
-    result.push(
-      current
-    );
-
-    current =
-      addDays(
-        current,
-        1
-      );
-  }
-
-  return result;
-}
+const FAR_PAST = new Date(0);
 
 // =========================
 // ŻYCIE NAWYKU
 // =========================
 
-export function getHabitStart(
-  habit: Habit
-) {
-  return parseDateTime(
-    habit.createdAt
-  );
+export function getHabitStart(habit: Habit) {
+  return parseDateTime(habit.createdAt);
 }
 
-export function getHabitEnd(
-  habit: Habit
-) {
-  if (
-    habit.archived &&
-    habit.archivedAt
-  ) {
-    return parseDateTime(
-      habit.archivedAt
-    );
+export function getHabitEnd(habit: Habit) {
+  if (habit.archived && habit.archivedAt) {
+    return parseDateTime(habit.archivedAt);
   }
 
   return null;
 }
 
-export function isHabitAliveOnDate(
-  habit: Habit,
-  date: Date
-) {
-  const habitStart =
-    getHabitStart(
-      habit
-    );
+type Interval = { start: Date; end: Date | null };
 
-  if (
-    date < habitStart
-  ) {
-    return false;
+function intersect(first: Interval, second: Interval): Interval | null {
+  const start = maxDate(first.start, second.start);
+  let end: Date | null;
+
+  if (first.end && second.end) {
+    end = minDate(first.end, second.end);
+  } else {
+    end = first.end ?? second.end;
   }
 
-  const habitEnd =
-    getHabitEnd(
-      habit
-    );
-
-  if (
-    habitEnd &&
-    date > habitEnd
-  ) {
-    return false;
+  if (end && start > end) {
+    return null;
   }
 
-  return true;
+  return { start, end };
+}
+
+function subtractPeriod(
+  interval: Interval,
+  from: Date,
+  to: Date
+): Interval[] {
+  const result: Interval[] = [];
+  const dayBefore = addDays(from, -1);
+  const dayAfter = addDays(to, 1);
+
+  if (interval.start <= dayBefore) {
+    result.push({
+      start: interval.start,
+      end: interval.end ? minDate(interval.end, dayBefore) : dayBefore,
+    });
+  }
+
+  if (!interval.end || dayAfter <= interval.end) {
+    result.push({
+      start: maxDate(interval.start, dayAfter),
+      end: interval.end,
+    });
+  }
+
+  return result.filter(
+    (item) => !item.end || item.start <= item.end
+  );
+}
+
+const segmentCache = new WeakMap<Habit, HabitSegment[]>();
+
+// Dzieli życie nawyku na odcinki o stałej częstotliwości, pomijając okresy archiwizacji.
+export function getHabitSegments(habit: Habit): HabitSegment[] {
+  const cached = segmentCache.get(habit);
+  if (cached) {
+    return cached;
+  }
+
+  const lifeStart = getHabitStart(habit);
+  let alive: Interval[] = [
+    { start: lifeStart, end: getHabitEnd(habit) },
+  ];
+
+  for (const period of habit.inactivePeriods ?? []) {
+    const from = parseDateKey(period.from);
+    const to = parseDateKey(period.to);
+    alive = alive.flatMap((interval) =>
+      subtractPeriod(interval, from, to)
+    );
+  }
+
+  const revisions: (Interval & { frequency: HabitFrequency })[] = [
+    ...(habit.history ?? []).map((revision) => ({
+      start: parseDateKey(revision.effectiveFrom),
+      end: parseDateKey(revision.effectiveTo) as Date | null,
+      frequency: revision.frequency,
+    })),
+    {
+      start: habit.effectiveFrom
+        ? parseDateKey(habit.effectiveFrom)
+        : FAR_PAST,
+      end: null,
+      frequency: habit.frequency,
+    },
+  ];
+
+  const segments: HabitSegment[] = [];
+
+  for (const revision of revisions) {
+    for (const interval of alive) {
+      const overlap = intersect(interval, revision);
+      if (overlap) {
+        segments.push({
+          start: overlap.start,
+          end: overlap.end,
+          frequency: revision.frequency,
+          anchor: maxDate(revision.start, lifeStart),
+        });
+      }
+    }
+  }
+
+  segments.sort((a, b) => a.start.getTime() - b.start.getTime());
+  segmentCache.set(habit, segments);
+
+  return segments;
+}
+
+function getSegmentAt(habit: Habit, date: Date) {
+  const day = startOfDay(date);
+
+  return getHabitSegments(habit).find(
+    (segment) =>
+      segment.start <= day && (!segment.end || day <= segment.end)
+  );
+}
+
+export function isHabitAliveOnDate(habit: Habit, date: Date) {
+  return !!getSegmentAt(habit, date);
+}
+
+export function getFrequencyOnDate(habit: Habit, date: Date) {
+  return getSegmentAt(habit, date)?.frequency ?? habit.frequency;
 }
 
 // =========================
 // HARMONOGRAM
 // =========================
 
-export function isScheduledDay(
-  habit: Habit,
-  date: Date
-) {
-  if (
-    !isHabitAliveOnDate(
-      habit,
-      date
-    )
-  ) {
-    return false;
-  }
+function isScheduledOnSegment(segment: HabitSegment, date: Date) {
+  const frequency = segment.frequency;
 
-  const frequency =
-    habit.frequency;
-
-  // =====================
-  // CODZIENNIE
-  // =====================
-
-  if (
-    frequency.type ===
-    "daily"
-  ) {
+  if (frequency.type === "daily") {
     return true;
   }
 
-  // =====================
-  // WYBRANE DNI
-  // =====================
-
-  if (
-    frequency.type ===
-    "selectedDays"
-  ) {
-    const weekDay =
-      WEEK_DAY_MAP[
-        date.getDay()
-      ];
-
-    return frequency.selectedDays.includes(
-      weekDay
-    );
+  if (frequency.type === "selectedDays") {
+    return frequency.selectedDays.includes(WEEK_DAY_MAP[date.getDay()]);
   }
 
-  // =====================
-  // CO X DNI
-  // =====================
+  if (frequency.type === "interval") {
+    const interval = Math.max(1, frequency.intervalDays);
+    const difference = differenceInDays(date, segment.anchor);
 
-  if (
-    frequency.type ===
-    "interval"
-  ) {
-    const interval =
-      Math.max(
-        1,
-        frequency.intervalDays
-      );
-
-    const habitStart =
-      getHabitStart(
-        habit
-      );
-
-    const difference =
-      differenceInDays(
-        date,
-        habitStart
-      );
-
-    return (
-      difference >= 0 &&
-      difference %
-        interval ===
-        0
-    );
+    return difference >= 0 && difference % interval === 0;
   }
 
-  // =====================
-  // X RAZY W TYGODNIU
-  // =====================
-  //
-  // Nie ma konkretnych
-  // zaplanowanych dni.
-  // Ten typ liczymy jako
-  // cel tygodniowy.
-  // =====================
-
+  // „X razy w tygodniu” nie ma konkretnych dni - liczymy je jako cel tygodniowy.
   return false;
+}
+
+export function isScheduledDay(habit: Habit, date: Date) {
+  const segment = getSegmentAt(habit, date);
+
+  return !!segment && isScheduledOnSegment(segment, startOfDay(date));
 }
 
 // =========================
 // WYKONANIE
 // =========================
 
+const completedIndexCache = new WeakMap<
+  ProgressEntry[],
+  Map<string, Set<string>>
+>();
+
+// Indeks habitId -> zbiór dat. Zbiór usuwa też zdublowane wpisy z tego samego dnia.
+function getCompletedIndex(entries: ProgressEntry[]) {
+  const cached = completedIndexCache.get(entries);
+  if (cached) {
+    return cached;
+  }
+
+  const index = new Map<string, Set<string>>();
+
+  for (const entry of entries) {
+    if (!entry.completed) {
+      continue;
+    }
+
+    let dates = index.get(entry.habitId);
+    if (!dates) {
+      dates = new Set();
+      index.set(entry.habitId, dates);
+    }
+    dates.add(entry.date);
+  }
+
+  completedIndexCache.set(entries, index);
+
+  return index;
+}
+
 export function hasCompletedEntry(
   entries: ProgressEntry[],
   habitId: string,
   date: Date
 ) {
-  const key =
-    getDateKey(
-      date
-    );
-
-  return entries.some(
-    (entry) =>
-      entry.habitId ===
-        habitId &&
-      entry.date === key &&
-      entry.completed
+  return (
+    getCompletedIndex(entries)
+      .get(habitId)
+      ?.has(getDateKey(date)) ?? false
   );
 }
 
@@ -439,145 +320,55 @@ export function getTimesPerWeekStats(
   range: ProgressRange,
   entries: ProgressEntry[]
 ) {
-  const target =
-    Math.max(
-      1,
-      habit.frequency
-        .timesPerWeek
-    );
-
-  const habitStart =
-    getHabitStart(
-      habit
-    );
-
-  const habitEnd =
-    getHabitEnd(
-      habit
-    );
-
-  const effectiveStart =
-    maxDate(
-      range.start,
-      habitStart
-    );
-
-  const effectiveEnd =
-    habitEnd
-      ? minDate(
-          range.end,
-          habitEnd
-        )
-      : range.end;
-
-  if (
-    effectiveStart >
-    effectiveEnd
-  ) {
-    return {
-      expected: 0,
-
-      completed: 0,
-    };
-  }
+  const completedDates =
+    getCompletedIndex(entries).get(habit.id) ?? new Set<string>();
 
   let expected = 0;
-
   let completed = 0;
   let availableDaysTotal = 0;
 
-  let weekStart =
-    startOfWeekMonday(
-      effectiveStart
-    );
-
-  while (
-    weekStart <=
-    effectiveEnd
-  ) {
-    const weekEnd =
-      addDays(
-        weekStart,
-        6
-      );
-
-    const segmentStart =
-      maxDate(
-        weekStart,
-        effectiveStart
-      );
-
-    const segmentEnd =
-      minDate(
-        weekEnd,
-        effectiveEnd
-      );
-
-    if (
-      segmentStart <=
-      segmentEnd
-    ) {
-      const availableDays =
-        differenceInDays(
-          segmentEnd,
-          segmentStart
-        ) + 1;
-      availableDaysTotal += availableDays;
-      expected +=
-        (target * availableDays) / 7;
-
-      const completedThisWeek =
-        entries.filter(
-          (entry) => {
-            if (
-              entry.habitId !==
-                habit.id ||
-              !entry.completed
-            ) {
-              return false;
-            }
-
-            const entryDate =
-              parseDateKey(
-                entry.date
-              );
-
-            return (
-              entryDate >=
-                segmentStart &&
-              entryDate <=
-                segmentEnd
-            );
-          }
-        ).length;
-      completed +=
-        Math.min(
-          completedThisWeek,
-          target
-        );
+  for (const segment of getHabitSegments(habit)) {
+    if (segment.frequency.type !== "timesPerWeek") {
+      continue;
     }
 
-    weekStart =
-      addDays(
-        weekStart,
-        7
-      );
+    const effectiveStart = maxDate(range.start, segment.start);
+    const effectiveEnd = segment.end
+      ? minDate(range.end, segment.end)
+      : range.end;
+
+    if (effectiveStart > effectiveEnd) {
+      continue;
+    }
+
+    const target = Math.max(1, segment.frequency.timesPerWeek);
+    let weekStart = startOfWeekMonday(effectiveStart);
+
+    while (weekStart <= effectiveEnd) {
+      const segmentStart = maxDate(weekStart, effectiveStart);
+      const segmentEnd = minDate(addDays(weekStart, 6), effectiveEnd);
+      const availableDays =
+        differenceInDays(segmentEnd, segmentStart) + 1;
+
+      availableDaysTotal += availableDays;
+      expected += (target * availableDays) / 7;
+
+      let completedThisWeek = 0;
+      for (const day of eachDay(segmentStart, segmentEnd)) {
+        if (completedDates.has(getDateKey(day))) {
+          completedThisWeek += 1;
+        }
+      }
+      completed += Math.min(completedThisWeek, target);
+
+      weekStart = addDays(weekStart, 7);
+    }
   }
 
-  expected = Math.min(
-    availableDaysTotal,
-    Math.ceil(expected)
-  );
-  completed = Math.min(
-    completed,
-    expected
-  );
+  expected = Math.min(availableDaysTotal, Math.ceil(expected));
+  completed = Math.min(completed, expected);
 
-  return {
-    expected,
-
-    completed,
-  };
+  return { expected, completed };
 }
 
 export function calculateHabitBestStreak(
@@ -586,6 +377,7 @@ export function calculateHabitBestStreak(
 ) {
   const habitStart = getHabitStart(habit);
   const habitEnd = getHabitEnd(habit) ?? startOfDay(new Date());
+
   if (
     Number.isNaN(habitStart.getTime()) ||
     habitStart > habitEnd
@@ -593,18 +385,22 @@ export function calculateHabitBestStreak(
     return 0;
   }
 
+  let currentStreak = 0;
+  let bestStreak = 0;
+
   if (habit.frequency.type === "timesPerWeek") {
     let weekStart = startOfWeekMonday(habitStart);
-    let currentStreak = 0;
-    let bestStreak = 0;
 
     while (weekStart <= habitEnd) {
       const weekEnd = addDays(weekStart, 6);
-      const range = {
-        start: maxDate(weekStart, habitStart),
-        end: minDate(weekEnd, habitEnd),
-      };
-      const stats = getTimesPerWeekStats(habit, range, entries);
+      const stats = getTimesPerWeekStats(
+        habit,
+        {
+          start: maxDate(weekStart, habitStart),
+          end: minDate(weekEnd, habitEnd),
+        },
+        entries
+      );
 
       if (stats.expected > 0) {
         if (stats.completed >= stats.expected) {
@@ -621,12 +417,11 @@ export function calculateHabitBestStreak(
     return bestStreak;
   }
 
-  let currentStreak = 0;
-  let bestStreak = 0;
   for (const date of eachDay(habitStart, habitEnd)) {
     if (!isScheduledDay(habit, date)) {
       continue;
     }
+
     if (hasCompletedEntry(entries, habit.id, date)) {
       currentStreak += 1;
       bestStreak = Math.max(bestStreak, currentStreak);
@@ -642,157 +437,62 @@ export function calculateHabitBestStreak(
 // STATYSTYKI OKRESU
 // =========================
 
+function toSuccessRate(completed: number, expected: number) {
+  return expected > 0
+    ? Math.min(100, Math.round((completed / expected) * 100))
+    : 0;
+}
+
 export function calculateProgressStats(
   habits: Habit[],
   entries: ProgressEntry[],
   range: ProgressRange
 ): ProgressStats {
+  const index = getCompletedIndex(entries);
+  const activeDateKeys = new Set<string>();
   let expected = 0;
-
   let completed = 0;
 
-  const activeDateKeys =
-    new Set<string>();
+  for (const habit of habits) {
+    const weekly = getTimesPerWeekStats(habit, range, entries);
+    expected += weekly.expected;
+    completed += weekly.completed;
 
-  for (
-    const habit of habits
-  ) {
-    // =====================
-    // X RAZY W TYGODNIU
-    // =====================
+    const completedDates = index.get(habit.id);
 
-    if (
-      habit.frequency
-        .type ===
-      "timesPerWeek"
-    ) {
-      const stats =
-        getTimesPerWeekStats(
-          habit,
-          range,
-          entries
-        );
+    for (const segment of getHabitSegments(habit)) {
+      const start = maxDate(range.start, segment.start);
+      const end = segment.end
+        ? minDate(range.end, segment.end)
+        : range.end;
 
-      expected +=
-        stats.expected;
-
-      completed +=
-        stats.completed;
-
-      continue;
-    }
-
-    // =====================
-    // POZOSTAŁE
-    // =====================
-
-    const days =
-      eachDay(
-        range.start,
-        range.end
-      );
-
-    for (
-      const date of days
-    ) {
-      if (
-        !isScheduledDay(
-          habit,
-          date
-        )
-      ) {
+      if (start > end) {
         continue;
       }
 
-      expected += 1;
+      for (const date of eachDay(start, end)) {
+        const key = getDateKey(date);
+        const done = completedDates?.has(key) ?? false;
 
-      if (
-        hasCompletedEntry(
-          entries,
-          habit.id,
-          date
-        )
-      ) {
-        completed += 1;
+        if (done) {
+          activeDateKeys.add(key);
+        }
+
+        if (isScheduledOnSegment(segment, date)) {
+          expected += 1;
+          if (done) {
+            completed += 1;
+          }
+        }
       }
     }
   }
 
-  // =====================
-  // AKTYWNE DNI
-  // =====================
-
-  for (
-    const entry of entries
-  ) {
-    if (
-      !entry.completed
-    ) {
-      continue;
-    }
-
-    const entryDate =
-      parseDateKey(
-        entry.date
-      );
-
-    if (
-      entryDate <
-        range.start ||
-      entryDate >
-        range.end
-    ) {
-      continue;
-    }
-
-    const habit =
-      habits.find(
-        (item) =>
-          item.id ===
-          entry.habitId
-      );
-
-    if (
-      !habit
-    ) {
-      continue;
-    }
-
-    if (
-      !isHabitAliveOnDate(
-        habit,
-        entryDate
-      )
-    ) {
-      continue;
-    }
-
-    activeDateKeys.add(
-      entry.date
-    );
-  }
-
-  const successRate =
-    expected > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (completed /
-              expected) *
-              100
-          )
-        )
-      : 0;
-
   return {
     expected,
-
     completed,
-
-    successRate,
-
-    activeDays:
-      activeDateKeys.size,
+    successRate: toSuccessRate(completed, expected),
+    activeDays: activeDateKeys.size,
   };
 }
 
@@ -805,162 +505,120 @@ export function calculateDailyProgressStats(
   entries: ProgressEntry[],
   date: Date
 ): DailyProgressStats {
-  const day =
-    startOfDay(
-      date
-    );
-
-  const dateKey =
-    getDateKey(
-      day
-    );
-
+  const day = startOfDay(date);
+  const dateKey = getDateKey(day);
   let expected = 0;
-
   let completed = 0;
-
   let hasActivity = false;
 
-  // =========================
-  // AKTYWNOŚĆ
-  // =========================
-
-  for (
-    const entry of entries
-  ) {
-    if (
-      entry.date !==
-        dateKey ||
-      !entry.completed
-    ) {
+  for (const habit of habits) {
+    const segment = getSegmentAt(habit, day);
+    if (!segment) {
       continue;
     }
 
-    const habit =
-      habits.find(
-        (item) =>
-          item.id ===
-          entry.habitId
-      );
-
-    if (
-      !habit
-    ) {
-      continue;
+    const done = hasCompletedEntry(entries, habit.id, day);
+    if (done) {
+      hasActivity = true;
     }
 
-    if (
-      !isHabitAliveOnDate(
-        habit,
-        day
-      )
-    ) {
-      continue;
-    }
-
-    hasActivity = true;
-  }
-
-  // =========================
-  // PLAN DNIA
-  // =========================
-
-  for (
-    const habit of habits
-  ) {
-    // =====================
-    // X RAZY W TYGODNIU
-    // =====================
-    //
-    // Nie przypisujemy
-    // tygodniowego celu do
-    // konkretnego dnia.
-    //
-    // Jeżeli użytkownik wykonał
-    // taki nawyk tego dnia,
-    // traktujemy go jako
-    // wykonane 1/1 dla heatmapy.
-    // =====================
-
-    if (
-      habit.frequency
-        .type ===
-      "timesPerWeek"
-    ) {
-      if (
-        !isHabitAliveOnDate(
-          habit,
-          day
-        )
-      ) {
-        continue;
-      }
-
-      if (
-        hasCompletedEntry(
-          entries,
-          habit.id,
-          day
-        )
-      ) {
+    // Cel tygodniowy nie ma dnia - wykonanie traktujemy jako 1/1.
+    if (segment.frequency.type === "timesPerWeek") {
+      if (done) {
         expected += 1;
-
         completed += 1;
       }
-
       continue;
     }
 
-    // =====================
-    // NORMALNY PLAN DNIA
-    // =====================
-
-    if (
-      !isScheduledDay(
-        habit,
-        day
-      )
-    ) {
-      continue;
-    }
-
-    expected += 1;
-
-    if (
-      hasCompletedEntry(
-        entries,
-        habit.id,
-        day
-      )
-    ) {
-      completed += 1;
+    if (isScheduledOnSegment(segment, day)) {
+      expected += 1;
+      if (done) {
+        completed += 1;
+      }
     }
   }
-
-  const successRate =
-    expected > 0
-      ? Math.min(
-          100,
-          Math.round(
-            (completed /
-              expected) *
-              100
-          )
-        )
-      : 0;
 
   return {
     date: day,
-
     dateKey,
-
     expected,
-
     completed,
-
-    successRate,
-
+    successRate: toSuccessRate(completed, expected),
     hasActivity,
+  };
+}
+
+// =========================
+// WYKONANIE W ZAPLANOWANEJ PORZE
+// =========================
+
+const TIME_WINDOWS: Record<string, [number, number]> = {
+  morning: [5, 12],
+  afternoon: [12, 17],
+  evening: [17, 22],
+};
+
+export function isHourInTimeOfDay(type: string, hour: number) {
+  if (type === "night") {
+    return hour >= 22 || hour < 5;
+  }
+
+  const window = TIME_WINDOWS[type];
+
+  return !!window && hour >= window[0] && hour < window[1];
+}
+
+// Liczy tylko wpisy oznaczone tego samego dnia, bo uzupełnione wstecz nie mówią o porze wykonania.
+export function calculateOnTimeStats(
+  habits: Habit[],
+  entries: ProgressEntry[],
+  range: ProgressRange
+): OnTimeStats {
+  const habitsById = new Map(habits.map((habit) => [habit.id, habit]));
+  const startKey = getDateKey(range.start);
+  const endKey = getDateKey(range.end);
+  const seen = new Set<string>();
+  let eligible = 0;
+  let onTime = 0;
+
+  for (const entry of entries) {
+    const habit = habitsById.get(entry.habitId);
+    const dedupeKey = `${entry.habitId}|${entry.date}`;
+
+    if (
+      !habit ||
+      !entry.completed ||
+      !entry.completedAt ||
+      entry.date < startKey ||
+      entry.date > endKey ||
+      habit.timeOfDay?.type === "anytime" ||
+      !habit.timeOfDay ||
+      seen.has(dedupeKey)
+    ) {
+      continue;
+    }
+
+    const completedAt = new Date(entry.completedAt);
+    if (
+      Number.isNaN(completedAt.getTime()) ||
+      getDateKey(completedAt) !== entry.date
+    ) {
+      continue;
+    }
+
+    seen.add(dedupeKey);
+    eligible += 1;
+
+    if (isHourInTimeOfDay(habit.timeOfDay.type, completedAt.getHours())) {
+      onTime += 1;
+    }
+  }
+
+  return {
+    eligible,
+    onTime,
+    rate: toSuccessRate(onTime, eligible),
   };
 }
 
@@ -972,25 +630,5 @@ export function calculateProgressChange(
   current: number,
   previous: number
 ) {
-  if (
-    current === 0 &&
-    previous === 0
-  ) {
-    return 0;
-  }
-
-  if (
-    previous === 0
-  ) {
-    return current > 0
-      ? 100
-      : 0;
-  }
-
-  return Math.round(
-    ((current -
-      previous) /
-      previous) *
-      100
-  );
+  return Math.round(current - previous);
 }

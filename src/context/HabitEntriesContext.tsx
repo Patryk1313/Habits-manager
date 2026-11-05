@@ -1,21 +1,37 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import {
   createContext,
   ReactNode,
   useContext,
-  useEffect,
-  useState,
 } from "react";
 
+import { usePersistentList } from "../hooks/usePersistentList";
 import { HabitEntry } from "../types/habit-entry";
 
 // =========================
-// ASYNC STORAGE
+// STORAGE
 // =========================
 
-const HABIT_ENTRIES_STORAGE_KEY =
+export const HABIT_ENTRIES_STORAGE_KEY =
   "@habits/habit-entries";
+
+// Jeden wpis na nawyk i dzień - przy duplikatach wygrywa ostatnio zmieniony.
+function normalizeEntries(items: unknown[]) {
+  const byKey = new Map<string, HabitEntry>();
+
+  for (const entry of items as HabitEntry[]) {
+    const key = `${entry.habitId}|${entry.date}`;
+    const existing = byKey.get(key);
+
+    if (
+      !existing ||
+      (entry.updatedAt ?? "") >= (existing.updatedAt ?? "")
+    ) {
+      byKey.set(key, entry);
+    }
+  }
+
+  return Array.from(byKey.values());
+}
 
 // =========================
 // TYP CONTEXTU
@@ -25,6 +41,10 @@ type HabitEntriesContextType = {
   entries: HabitEntry[];
 
   isLoading: boolean;
+
+  loadFailed: boolean;
+
+  reload: () => Promise<void>;
 
   getEntry: (
     habitId: string,
@@ -59,10 +79,6 @@ type HabitEntriesContextType = {
   ) => void;
 };
 
-// =========================
-// CONTEXT
-// =========================
-
 const HabitEntriesContext =
   createContext<
     HabitEntriesContextType | undefined
@@ -79,104 +95,68 @@ type HabitEntriesProviderProps = {
 export function HabitEntriesProvider({
   children,
 }: HabitEntriesProviderProps) {
-  const [entries, setEntries] = useState<
-    HabitEntry[]
-  >([]);
+  const {
+    items: entries,
+    setItems: setEntries,
+    isLoading,
+    loadFailed,
+    reload,
+  } = usePersistentList<HabitEntry>(
+    HABIT_ENTRIES_STORAGE_KEY,
+    normalizeEntries
+  );
 
-  const [isLoading, setIsLoading] =
-    useState(true);
-
-  // =========================
-  // WCZYTANIE HISTORII
-  // =========================
-
-  useEffect(() => {
-    const loadEntries = async () => {
-      try {
-        const storedEntries =
-          await AsyncStorage.getItem(
-            HABIT_ENTRIES_STORAGE_KEY
-          );
-
-        if (storedEntries) {
-          const parsedEntries: HabitEntry[] =
-            JSON.parse(storedEntries);
-
-          setEntries(parsedEntries);
-        }
-      } catch (error) {
-        console.error(
-          "Błąd podczas wczytywania historii nawyków:",
-          error
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadEntries();
-  }, []);
-
-  // =========================
-  // AUTOMATYCZNY ZAPIS
-  // =========================
-
-  useEffect(() => {
-    if (isLoading) {
-      return;
-    }
-
-    const saveEntries = async () => {
-      try {
-        await AsyncStorage.setItem(
-          HABIT_ENTRIES_STORAGE_KEY,
-          JSON.stringify(entries)
-        );
-      } catch (error) {
-        console.error(
-          "Błąd podczas zapisywania historii nawyków:",
-          error
-        );
-      }
-    };
-
-    saveEntries();
-  }, [entries, isLoading]);
-
-  // =========================
-  // POBIERANIE WPISU
-  // =========================
-
-  const getEntry = (
-    habitId: string,
-    date: string
-  ) => {
-    return entries.find(
+  const getEntry = (habitId: string, date: string) =>
+    entries.find(
       (entry) =>
-        entry.habitId === habitId &&
-        entry.date === date
+        entry.habitId === habitId && entry.date === date
     );
-  };
 
-  // =========================
-  // CZY NAWYK WYKONANY?
-  // =========================
+  const isHabitCompleted = (habitId: string, date: string) =>
+    getEntry(habitId, date)?.completed ?? false;
 
-  const isHabitCompleted = (
+  const upsertEntry = (
     habitId: string,
-    date: string
+    date: string,
+    resolveCompleted: (current: boolean) => boolean,
+    value: number | null
   ) => {
-    const entry = getEntry(
-      habitId,
-      date
-    );
+    setEntries((currentEntries) => {
+      const existing = currentEntries.find(
+        (entry) =>
+          entry.habitId === habitId && entry.date === date
+      );
+      const now = new Date().toISOString();
+      const completed = resolveCompleted(existing?.completed ?? false);
+      const patch = {
+        completed,
+        value: completed ? value : null,
+        completedAt: completed
+          ? existing?.completed
+            ? existing.completedAt ?? now
+            : now
+          : null,
+        updatedAt: now,
+      };
 
-    return entry?.completed ?? false;
+      if (existing) {
+        return currentEntries.map((entry) =>
+          entry === existing ? { ...entry, ...patch } : entry
+        );
+      }
+
+      return [
+        ...currentEntries,
+        {
+          id: `${habitId}-${date}-${Date.now()}`,
+          habitId,
+          date,
+          createdAt: now,
+          ...patch,
+        },
+      ];
+    });
   };
-
-  // =========================
-  // USTAWIENIE STATUSU
-  // =========================
 
   const setHabitCompleted = (
     habitId: string,
@@ -184,197 +164,44 @@ export function HabitEntriesProvider({
     completed: boolean,
     value: number | null = null
   ) => {
-    setEntries((currentEntries) => {
-      const existingEntry =
-        currentEntries.find(
-          (entry) =>
-            entry.habitId ===
-              habitId &&
-            entry.date === date
-        );
-
-      const now =
-        new Date().toISOString();
-
-      // =====================
-      // WPIS JUŻ ISTNIEJE
-      // =====================
-
-      if (existingEntry) {
-        return currentEntries.map(
-          (entry) =>
-            entry.id ===
-            existingEntry.id
-              ? {
-                  ...entry,
-
-                  completed,
-
-                  value,
-
-                  updatedAt: now,
-                }
-              : entry
-        );
-      }
-
-      // =====================
-      // NOWY WPIS
-      // =====================
-
-      const newEntry: HabitEntry = {
-        id: `${habitId}-${date}-${Date.now()}`,
-
-        habitId,
-
-        date,
-
-        completed,
-
-        value,
-
-        createdAt: now,
-
-        updatedAt: now,
-      };
-
-      return [
-        ...currentEntries,
-        newEntry,
-      ];
-    });
+    upsertEntry(habitId, date, () => completed, value);
   };
-
-  // =========================
-  // TOGGLE
-  // =========================
 
   const toggleHabit = (
     habitId: string,
     date: string,
     value: number | null = null
   ) => {
-    setEntries((currentEntries) => {
-      const existingEntry =
-        currentEntries.find(
-          (entry) =>
-            entry.habitId ===
-              habitId &&
-            entry.date === date
-        );
-
-      const now =
-        new Date().toISOString();
-
-      // =====================
-      // WPIS ISTNIEJE
-      // =====================
-
-      if (existingEntry) {
-        return currentEntries.map(
-          (entry) =>
-            entry.id ===
-            existingEntry.id
-              ? {
-                  ...entry,
-
-                  completed:
-                    !entry.completed,
-
-                  value:
-                    !entry.completed
-                      ? value
-                      : null,
-
-                  updatedAt: now,
-                }
-              : entry
-        );
-      }
-
-      // =====================
-      // PIERWSZE WYKONANIE
-      // =====================
-
-      const newEntry: HabitEntry = {
-        id: `${habitId}-${date}-${Date.now()}`,
-
-        habitId,
-
-        date,
-
-        completed: true,
-
-        value,
-
-        createdAt: now,
-
-        updatedAt: now,
-      };
-
-      return [
-        ...currentEntries,
-        newEntry,
-      ];
-    });
+    upsertEntry(habitId, date, (current) => !current, value);
   };
 
-  // =========================
-  // USUWANIE WPISU
-  // =========================
-
-  const removeEntry = (
-    habitId: string,
-    date: string
-  ) => {
+  const removeEntry = (habitId: string, date: string) => {
     setEntries((currentEntries) =>
       currentEntries.filter(
         (entry) =>
-          !(
-            entry.habitId ===
-              habitId &&
-            entry.date === date
-          )
+          !(entry.habitId === habitId && entry.date === date)
       )
     );
   };
 
-  // =========================
-  // USUWANIE HISTORII NAWYKU
-  // =========================
-
-  const removeEntriesForHabit = (
-    habitId: string
-  ) => {
+  const removeEntriesForHabit = (habitId: string) => {
     setEntries((currentEntries) =>
-      currentEntries.filter(
-        (entry) =>
-          entry.habitId !== habitId
-      )
+      currentEntries.filter((entry) => entry.habitId !== habitId)
     );
   };
-
-  // =========================
-  // PROVIDER
-  // =========================
 
   return (
     <HabitEntriesContext.Provider
       value={{
         entries,
-
         isLoading,
-
+        loadFailed,
+        reload,
         getEntry,
-
         isHabitCompleted,
-
         toggleHabit,
-
         setHabitCompleted,
-
         removeEntry,
-
         removeEntriesForHabit,
       }}
     >

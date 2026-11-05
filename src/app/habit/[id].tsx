@@ -14,6 +14,7 @@ import {
 } from "expo-router";
 import {
   useMemo,
+  useState,
 } from "react";
 import {
   Circle,
@@ -43,6 +44,8 @@ import {
   addDays,
   calculateProgressStats,
   getDateKey,
+  getFrequencyOnDate,
+  getHabitStart,
   isHabitAliveOnDate,
   isScheduledDay,
   startOfDay,
@@ -481,10 +484,9 @@ export default function HabitDetailsScreen() {
           );
         const completedDates =
           new Set(
-            habitEntries.map(
-              (entry) =>
-                entry.date
-            )
+            habitEntries
+              .filter((entry) => entry.completed)
+              .map((entry) => entry.date)
           );
         for (let index = 0; index < 3650; index += 1) {
           const key =
@@ -492,7 +494,7 @@ export default function HabitDetailsScreen() {
               cursor
             );
           const scheduled =
-            habit.frequency.type === "timesPerWeek"
+            getFrequencyOnDate(habit, cursor).type === "timesPerWeek"
               ? isHabitAliveOnDate(habit, cursor)
               : isScheduledDay(habit, cursor);
           if (!scheduled) {
@@ -576,6 +578,47 @@ export default function HabitDetailsScreen() {
         today,
       ]
     );
+  // =========================
+  // HISTORIA WYKONAŃ
+  // =========================
+  const [historyLimit, setHistoryLimit] = useState(14);
+  const history = useMemo(() => {
+    if (!habit) {
+      return [];
+    }
+
+    const byDate = new Map(
+      habitEntries.map((entry) => [entry.date, entry])
+    );
+    const start = getHabitStart(habit);
+    const rows: {
+      key: string;
+      date: Date;
+      done: boolean;
+      value: number | null;
+    }[] = [];
+
+    for (
+      let cursor = today;
+      cursor >= start;
+      cursor = addDays(cursor, -1)
+    ) {
+      const key = getDateKey(cursor);
+      const entry = byDate.get(key);
+      const scheduled =
+        getFrequencyOnDate(habit, cursor).type !== "timesPerWeek" &&
+        isScheduledDay(habit, cursor);
+
+      if (entry) {
+        rows.push({ key, date: cursor, done: true, value: entry.value ?? null });
+      } else if (scheduled && key !== getDateKey(today)) {
+        rows.push({ key, date: cursor, done: false, value: null });
+      }
+    }
+
+    return rows;
+  }, [habit, habitEntries, today]);
+
   // =========================
   // EDYCJA
   // =========================
@@ -1282,45 +1325,67 @@ export default function HabitDetailsScreen() {
         >
           HISTORIA
         </Text>
-        <View
-          style={
-            styles.placeholderCard
-          }
-        >
-          <View
-            style={[
-              styles.placeholderIcon,
-              {
-                backgroundColor:
-                  habitColor.light,
-              },
-            ]}
-          >
-            <Text
-              style={
-                styles.placeholderEmoji
-              }
-            >
-              🗓️
+        <View style={styles.historyCard}>
+          {history.length === 0 ? (
+            <Text style={styles.placeholderText}>
+              Brak wykonań do pokazania.
             </Text>
-          </View>
-          <Text
-            style={
-              styles.placeholderTitle
-            }
-          >
-            Historia wykonań
-          </Text>
-          <Text
-            style={
-              styles.placeholderText
-            }
-          >
-            W kolejnym kroku
-            dodamy tutaj listę
-            wykonanych i pominiętych
-            dni tego nawyku.
-          </Text>
+          ) : (
+            history.slice(0, historyLimit).map((row, index) => (
+              <View
+                key={row.key}
+                style={[
+                  styles.historyRow,
+                  index > 0 && styles.historyRowBorder,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.historyDot,
+                    {
+                      backgroundColor: row.done
+                        ? colors.success
+                        : colors.danger,
+                    },
+                  ]}
+                />
+                <Text style={styles.historyDate}>
+                  {row.date.toLocaleDateString("pl-PL", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </Text>
+                <Text
+                  style={[
+                    styles.historyStatus,
+                    {
+                      color: row.done ? colors.success : colors.danger,
+                    },
+                  ]}
+                >
+                  {row.done
+                    ? row.value !== null && habit.unit
+                      ? `${row.value} ${habit.unit.symbol}`
+                      : "Wykonano"
+                    : "Pominięto"}
+                </Text>
+              </View>
+            ))
+          )}
+          {history.length > historyLimit && (
+            <Pressable
+              onPress={() => setHistoryLimit((current) => current + 30)}
+              style={styles.historyMore}
+            >
+              <Text
+                style={[styles.historyMoreText, { color: habitColor.primary }]}
+              >
+                Pokaż więcej
+              </Text>
+            </Pressable>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1667,36 +1732,48 @@ function createStyles(colors: AppThemeColors) {
     // =====================
     // PLACEHOLDER
     // =====================
-    placeholderCard: {
-      minHeight: 180,
-      backgroundColor:
-        colors.surface,
+    historyCard: {
+      backgroundColor: colors.surface,
       borderRadius: 20,
       borderWidth: 1,
-      borderColor:
-        colors.border,
+      borderColor: colors.border,
+      paddingHorizontal: 16,
+      paddingVertical: 6,
+    },
+    historyRow: {
+      flexDirection: "row",
       alignItems: "center",
-      justifyContent:
-        "center",
-      paddingHorizontal: 35,
-      paddingVertical: 25,
+      paddingVertical: 12,
     },
-    placeholderIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
-      alignItems: "center",
-      justifyContent:
-        "center",
-      marginBottom: 12,
+    historyRowBorder: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
-    placeholderEmoji: {
-      fontSize: 20,
+    historyDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      marginRight: 12,
     },
-    placeholderTitle: {
+    historyDate: {
+      flex: 1,
       color: colors.text,
-      fontSize: 15,
-      fontWeight: "800",
+      fontSize: 13,
+      fontWeight: "600",
+    },
+    historyStatus: {
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    historyMore: {
+      alignItems: "center",
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    historyMoreText: {
+      fontSize: 13,
+      fontWeight: "700",
     },
     placeholderText: {
       color: colors.textMuted,

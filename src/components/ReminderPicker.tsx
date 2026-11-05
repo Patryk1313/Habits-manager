@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   Alert,
@@ -63,11 +63,16 @@ export default function ReminderPicker({
   const [draft, setDraft] =
     useState<HabitReminder>(value);
 
-  useEffect(() => {
+  const [wasVisible, setWasVisible] = useState(visible);
+  const [lastValue, setLastValue] = useState(value);
+
+  if (visible !== wasVisible || value !== lastValue) {
+    setWasVisible(visible);
+    setLastValue(value);
     if (visible) {
       setDraft(value);
     }
-  }, [visible, value]);
+  }
 
   const setEnabled = (enabled: boolean) => {
     setDraft((current) => ({

@@ -30,7 +30,10 @@ import { useTheme } from "../../context/ThemeContext";
 import type { AppThemeColors } from "../../context/ThemeContext";
 import { useRoutines } from "../../context/RoutinesContext";
 import { useRoutineEntries } from "../../context/RoutineEntriesContext";
-import { isHabitScheduledForDate } from "../../utils/habit-schedule";
+import {
+  isHabitScheduledForDate,
+  wasHabitCreatedByDate,
+} from "../../utils/habit-schedule";
 import { getHabitWeeklyCount } from "../../utils/habit-week";
 import type {
   Routine,
@@ -297,14 +300,16 @@ export default function Index() {
             return false;
           }
 
-          return (
-            isHistoricalDate ||
-            isHabitScheduledForDate(
-              habit.frequency,
-              selectedDate,
-              habit.createdAt
-            )
-          );
+          return isHistoricalDate
+            ? wasHabitCreatedByDate(
+                habit.createdAt,
+                selectedDate
+              )
+            : isHabitScheduledForDate(
+                habit.frequency,
+                selectedDate,
+                habit.createdAt
+              );
         }
       ),
     })
@@ -323,13 +328,15 @@ export default function Index() {
   const selectedDateRoutines =
     activeRoutines.filter(
       (routine) => {
-        return (
-          isHistoricalDate ||
-          isRoutineScheduledForDate(
-            routine,
-            selectedDate
-          )
-        );
+        return isHistoricalDate
+          ? wasHabitCreatedByDate(
+              routine.createdAt,
+              selectedDate
+            )
+          : isRoutineScheduledForDate(
+              routine,
+              selectedDate
+            );
       }
     );
   // =========================

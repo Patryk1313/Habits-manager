@@ -3,7 +3,6 @@ import {
   useRouter,
 } from "expo-router";
 import {
-  useEffect,
   useState,
 } from "react";
 import {
@@ -76,6 +75,7 @@ export default function EditHabitScreen() {
     habits,
     updateHabit,
     removeHabit,
+    archiveHabit,
     isLoading,
   } = useHabits();
   const { removeEntriesForHabit } = useHabitEntries();
@@ -207,10 +207,11 @@ export default function EditHabitScreen() {
   // =========================
   // WCZYTANIE DANYCH NAWYKU
   // =========================
-  useEffect(() => {
-    if (!habit) {
-      return;
-    }
+  const [loaded, setLoaded] =
+    useState<typeof habit>(undefined);
+
+  if (habit && habit !== loaded) {
+    setLoaded(habit);
     setName(habit.name);
     setCategory(
       habit.category
@@ -256,7 +257,7 @@ export default function EditHabitScreen() {
     setSelectedColor(
       foundColor ?? habit.color
     );
-  }, [habit]);
+  }
   // =========================
   // WALIDACJA
   // =========================
@@ -321,6 +322,32 @@ export default function EditHabitScreen() {
           onPress: () => {
             removeEntriesForHabit(habit.id);
             removeHabit(habit.id);
+            router.replace("/");
+          },
+        },
+      ]
+    );
+  };
+  // =========================
+  // ARCHIWIZACJA NAWYKU
+  // =========================
+  const archiveCurrentHabit = () => {
+    if (!habit || habit.archived) {
+      return;
+    }
+
+    Alert.alert(
+      "Archiwizować nawyk?",
+      `„${habit.name}” zniknie z aktywnej listy. Historia wykonań i statystyki pozostaną zachowane.`,
+      [
+        {
+          text: "Anuluj",
+          style: "cancel",
+        },
+        {
+          text: "Archiwizuj",
+          onPress: () => {
+            archiveHabit(habit.id);
             router.replace("/");
           },
         },
@@ -1328,6 +1355,25 @@ export default function EditHabitScreen() {
             Historia wykonania nawyku
             zostanie zachowana.
           </Text>
+          {!habit.archived && (
+            <View style={styles.archiveSection}>
+              <Pressable
+                onPress={archiveCurrentHabit}
+                style={({ pressed }) => [
+                  styles.archiveButton,
+                  pressed && styles.deleteButtonPressed,
+                ]}
+              >
+                <Text style={styles.archiveButtonText}>
+                  Archiwizuj nawyk
+                </Text>
+              </Pressable>
+              <Text style={styles.archiveInfo}>
+                Nawyk zostanie ukryty z aktywnej listy. Możesz go
+                przywrócić w archiwum.
+              </Text>
+            </View>
+          )}
           <View style={styles.deleteSection}>
             <Text style={styles.deleteSectionTitle}>
               STREFA NIEODWRACALNA
@@ -1950,6 +1996,31 @@ function createStyles(colors: AppThemeColors) {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: 13,
+  },
+  archiveSection: {
+    marginTop: 22,
+    alignItems: "center",
+  },
+  archiveButton: {
+    width: "100%",
+    minHeight: 52,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  archiveButtonText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  archiveInfo: {
+    color: colors.textMuted,
+    fontSize: 11,
+    textAlign: "center",
+    marginTop: 8,
   },
   deleteSection: {
     marginTop: 26,

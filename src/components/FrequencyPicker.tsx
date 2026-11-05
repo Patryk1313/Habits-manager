@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   Modal,
@@ -98,11 +98,16 @@ export default function FrequencyPicker({
   const [draft, setDraft] =
     useState<HabitFrequency>(value);
 
-  useEffect(() => {
+  const [wasVisible, setWasVisible] = useState(visible);
+  const [lastValue, setLastValue] = useState(value);
+
+  if (visible !== wasVisible || value !== lastValue) {
+    setWasVisible(visible);
+    setLastValue(value);
     if (visible) {
       setDraft(value);
     }
-  }, [visible, value]);
+  }
 
   const setType = (type: FrequencyType) => {
     setDraft((current) => ({

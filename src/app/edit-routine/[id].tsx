@@ -22,7 +22,6 @@ import HabitIconPicker, {
   getSelectedHabitIconName,
 } from "../../components/HabitIconPicker";
 import {
-  useEffect,
   useState,
 } from "react";
 import {
@@ -201,10 +200,11 @@ export default function EditRoutineScreen() {
   // =========================
   // WCZYTANIE RUTYNY DO FORM
   // =========================
-  useEffect(() => {
-    if (!routine) {
-      return;
-    }
+  const [loaded, setLoaded] =
+    useState<typeof routine>(undefined);
+
+  if (routine && routine !== loaded) {
+    setLoaded(routine);
     setName(routine.name);
     setIcon(routine.icon || "↻");
     setColor(routine.color || "#7668CF");
@@ -231,7 +231,7 @@ export default function EditRoutineScreen() {
           a.order - b.order
       )
     );
-  }, [routine]);
+  }
   // =========================
   // DZIEŃ TYGODNIA
   // =========================

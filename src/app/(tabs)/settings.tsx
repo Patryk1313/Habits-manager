@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ScrollView,
   StatusBar,
@@ -7,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import DataSettings from "../../components/settings/DataSettings";
 import {
   accentColors,
   AppAccentColor,
@@ -52,6 +54,7 @@ export default function SettingsScreen() {
     setAccent,
   } = useTheme();
   const isDark = mode === "dark";
+  const [tab, setTab] = useState<"preferences" | "data">("preferences");
   return (
     <View
       style={[
@@ -109,6 +112,50 @@ export default function SettingsScreen() {
               Dostosuj aplikację do siebie
             </Text>
           </View>
+          {/* TABS */}
+          <View
+            style={[
+              styles.tabs,
+              { backgroundColor: colors.surfaceSecondary },
+            ]}
+          >
+            {(
+              [
+                { id: "preferences", label: "Preferencje" },
+                { id: "data", label: "Dane" },
+              ] as const
+            ).map((item) => {
+              const active = tab === item.id;
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  onPress={() => setTab(item.id)}
+                  style={[
+                    styles.tab,
+                    active && { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.tabText,
+                      {
+                        color: active
+                          ? colors.accentForeground
+                          : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {tab === "data" && <DataSettings />}
+
+          {tab === "preferences" && (
+            <>
           {/* ========================= */}
           {/* MOTYW */}
           {/* ========================= */}
@@ -580,6 +627,8 @@ export default function SettingsScreen() {
               Wersja 1.0.0
             </Text>
           </View>
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -601,7 +650,23 @@ const styles = StyleSheet.create({
     paddingBottom: 50,
   },
   header: {
-    marginBottom: 30,
+    marginBottom: 20,
+  },
+  tabs: {
+    flexDirection: "row",
+    borderRadius: 16,
+    padding: 4,
+    marginBottom: 24,
+  },
+  tab: {
+    flex: 1,
+    alignItems: "center",
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: "700",
   },
   title: {
     fontSize: 32,

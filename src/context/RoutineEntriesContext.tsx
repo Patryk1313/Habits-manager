@@ -1,19 +1,31 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import {
   createContext,
   ReactNode,
   useContext,
-  useEffect,
-  useState,
 } from "react";
+
+import { usePersistentList } from "../hooks/usePersistentList";
 
 // =========================
 // STORAGE
 // =========================
 
-const ROUTINE_ENTRIES_STORAGE_KEY =
+export const ROUTINE_ENTRIES_STORAGE_KEY =
   "@habits/routine-entries";
+
+// Jeden wpis na czynność i dzień (usuwa duplikaty).
+function normalizeRoutineEntries(items: unknown[]) {
+  const byKey = new Map<string, RoutineEntry>();
+
+  for (const entry of items as RoutineEntry[]) {
+    byKey.set(
+      `${entry.routineId}|${entry.stepId}|${entry.date}`,
+      entry
+    );
+  }
+
+  return Array.from(byKey.values());
+}
 
 // =========================
 // WPIS CZYNNOŚCI RUTYNY
@@ -37,6 +49,10 @@ type RoutineEntriesContextType = {
   entries: RoutineEntry[];
 
   isLoading: boolean;
+
+  loadFailed: boolean;
+
+  reload: () => Promise<void>;
 
   isStepCompleted: (
     routineId: string,
@@ -84,68 +100,16 @@ type RoutineEntriesProviderProps = {
 export function RoutineEntriesProvider({
   children,
 }: RoutineEntriesProviderProps) {
-  const [entries, setEntries] =
-    useState<RoutineEntry[]>([]);
-
-  const [isLoading, setIsLoading] =
-    useState(true);
-
-  // =========================
-  // WCZYTYWANIE
-  // =========================
-
-  useEffect(() => {
-    const loadEntries = async () => {
-      try {
-        const storedEntries =
-          await AsyncStorage.getItem(
-            ROUTINE_ENTRIES_STORAGE_KEY
-          );
-
-        if (storedEntries) {
-          const parsedEntries: RoutineEntry[] =
-            JSON.parse(storedEntries);
-
-          setEntries(parsedEntries);
-        }
-      } catch (error) {
-        console.error(
-          "Błąd podczas wczytywania historii rutyn:",
-          error
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadEntries();
-  }, []);
-
-  // =========================
-  // AUTOMATYCZNY ZAPIS
-  // =========================
-
-  useEffect(() => {
-    if (isLoading) {
-      return;
-    }
-
-    const saveEntries = async () => {
-      try {
-        await AsyncStorage.setItem(
-          ROUTINE_ENTRIES_STORAGE_KEY,
-          JSON.stringify(entries)
-        );
-      } catch (error) {
-        console.error(
-          "Błąd podczas zapisywania historii rutyn:",
-          error
-        );
-      }
-    };
-
-    saveEntries();
-  }, [entries, isLoading]);
+  const {
+    items: entries,
+    setItems: setEntries,
+    isLoading,
+    loadFailed,
+    reload,
+  } = usePersistentList<RoutineEntry>(
+    ROUTINE_ENTRIES_STORAGE_KEY,
+    normalizeRoutineEntries
+  );
 
   // =========================
   // CZY CZYNNOŚĆ WYKONANA
@@ -251,6 +215,8 @@ export function RoutineEntriesProvider({
         entries,
 
         isLoading,
+        loadFailed,
+        reload,
 
         isStepCompleted,
 

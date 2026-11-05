@@ -1,23 +1,74 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
 import {
   createContext,
   ReactNode,
   useContext,
   useEffect,
-  useState,
 } from "react";
 import { AppState } from "react-native";
 
+import { usePersistentList } from "../hooks/usePersistentList";
 import { Habit } from "../types/habit";
+import { addDaysToDateKey, getDateKey } from "../utils/date";
 import { syncHabitNotifications } from "../utils/habit-notifications";
 
 // =========================
-// ASYNC STORAGE
+// STORAGE
 // =========================
 
-const HABITS_STORAGE_KEY =
+export const HABITS_STORAGE_KEY =
   "@habits/habits";
+
+// Starsze zapisy mogą nie mieć archived / archivedAt.
+function normalizeHabits(items: unknown[]) {
+  return (items as Partial<Habit>[]).map((habit) => ({
+    ...habit,
+    archived: habit.archived ?? false,
+    archivedAt: habit.archivedAt ?? null,
+  })) as Habit[];
+}
+
+// =========================
+// HISTORIA ZMIAN
+// =========================
+
+function sameFrequency(first: Habit["frequency"], second: Habit["frequency"]) {
+  return JSON.stringify(first) === JSON.stringify(second);
+}
+
+function applyFrequencyChange(current: Habit, updated: Habit): Habit {
+  if (sameFrequency(current.frequency, updated.frequency)) {
+    return {
+      ...updated,
+      history: current.history,
+      effectiveFrom: current.effectiveFrom,
+      inactivePeriods: current.inactivePeriods,
+    };
+  }
+
+  const todayKey = getDateKey(new Date());
+  const previousFrom =
+    current.effectiveFrom ?? getDateKey(new Date(current.createdAt));
+  const previousTo = addDaysToDateKey(todayKey, -1);
+  const history = current.history ?? [];
+
+  return {
+    ...updated,
+    effectiveFrom: todayKey,
+    inactivePeriods: current.inactivePeriods,
+    // Zmiana w tym samym dniu nie tworzy nowej wersji.
+    history:
+      previousFrom <= previousTo
+        ? [
+            ...history,
+            {
+              effectiveFrom: previousFrom,
+              effectiveTo: previousTo,
+              frequency: current.frequency,
+            },
+          ]
+        : history,
+  };
+}
 
 // =========================
 // TYP CONTEXTU
@@ -27,6 +78,10 @@ type HabitsContextType = {
   habits: Habit[];
 
   isLoading: boolean;
+
+  loadFailed: boolean;
+
+  reload: () => Promise<void>;
 
   addHabit: (
     habit: Habit
@@ -58,10 +113,6 @@ const HabitsContext =
     HabitsContextType | undefined
   >(undefined);
 
-// =========================
-// PROPS
-// =========================
-
 type HabitsProviderProps = {
   children: ReactNode;
 };
@@ -73,112 +124,16 @@ type HabitsProviderProps = {
 export function HabitsProvider({
   children,
 }: HabitsProviderProps) {
-  const [
-    habits,
-    setHabits,
-  ] = useState<Habit[]>([]);
-
-  const [
+  const {
+    items: habits,
+    setItems: setHabits,
     isLoading,
-    setIsLoading,
-  ] = useState(true);
-
-  // =========================
-  // WCZYTANIE NAWYKÓW
-  // =========================
-
-  useEffect(() => {
-    const loadHabits = async () => {
-      try {
-        const storedHabits =
-          await AsyncStorage.getItem(
-            HABITS_STORAGE_KEY
-          );
-
-        if (storedHabits) {
-          const parsedHabits =
-            JSON.parse(
-              storedHabits
-            ) as Partial<Habit>[];
-
-          // =====================
-          // MIGRACJA STARYCH NAWYKÓW
-          // =====================
-          //
-          // Starsze zapisane nawyki mogą
-          // nie posiadać:
-          //
-          // archived
-          // archivedAt
-          //
-          // Brak archived oznacza,
-          // że nawyk jest aktywny.
-          //
-          // Brak archivedAt oznacza,
-          // że nie znamy historycznej
-          // daty archiwizacji.
-          // =====================
-
-          const migratedHabits =
-            parsedHabits.map(
-              (habit) => ({
-                ...habit,
-
-                archived:
-                  habit.archived ??
-                  false,
-
-                archivedAt:
-                  habit.archivedAt ??
-                  null,
-              })
-            ) as Habit[];
-
-          setHabits(
-            migratedHabits
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Błąd podczas wczytywania nawyków:",
-          error
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadHabits();
-  }, []);
-
-  // =========================
-  // AUTOMATYCZNY ZAPIS
-  // =========================
-
-  useEffect(() => {
-    if (isLoading) {
-      return;
-    }
-
-    const saveHabits = async () => {
-      try {
-        await AsyncStorage.setItem(
-          HABITS_STORAGE_KEY,
-          JSON.stringify(habits)
-        );
-      } catch (error) {
-        console.error(
-          "Błąd podczas zapisywania nawyków:",
-          error
-        );
-      }
-    };
-
-    saveHabits();
-  }, [
-    habits,
-    isLoading,
-  ]);
+    loadFailed,
+    reload,
+  } = usePersistentList<Habit>(
+    HABITS_STORAGE_KEY,
+    normalizeHabits
+  );
 
   useEffect(() => {
     if (isLoading) {
@@ -198,140 +153,88 @@ export function HabitsProvider({
     return () => subscription.remove();
   }, [habits, isLoading]);
 
-  // =========================
-  // DODAWANIE NAWYKU
-  // =========================
-
-  const addHabit = (
-    habit: Habit
-  ) => {
+  const addHabit = (habit: Habit) => {
     const newHabit: Habit = {
       ...habit,
-
-      archived:
-        habit.archived ??
-        false,
-
-      archivedAt:
-        habit.archived
-          ? habit.archivedAt ??
-            new Date().toISOString()
-          : null,
+      archived: habit.archived ?? false,
+      archivedAt: habit.archived
+        ? habit.archivedAt ?? new Date().toISOString()
+        : null,
     };
 
-    setHabits(
-      (currentHabits) => [
-        ...currentHabits,
-        newHabit,
-      ]
+    setHabits((currentHabits) => [...currentHabits, newHabit]);
+  };
+
+  const updateHabit = (updatedHabit: Habit) => {
+    setHabits((currentHabits) =>
+      currentHabits.map((habit) =>
+        habit.id === updatedHabit.id
+          ? applyFrequencyChange(habit, updatedHabit)
+          : habit
+      )
     );
   };
 
-  // =========================
-  // AKTUALIZACJA NAWYKU
-  // =========================
+  const archiveHabit = (id: string) => {
+    const archivedAt = new Date().toISOString();
 
-  const updateHabit = (
-    updatedHabit: Habit
-  ) => {
-    setHabits(
-      (currentHabits) =>
-        currentHabits.map(
-          (habit) =>
-            habit.id ===
-            updatedHabit.id
-              ? updatedHabit
-              : habit
-        )
+    setHabits((currentHabits) =>
+      currentHabits.map((habit) =>
+        habit.id === id
+          ? { ...habit, archived: true, archivedAt }
+          : habit
+      )
     );
   };
 
-  // =========================
-  // ARCHIWIZACJA NAWYKU
-  // =========================
+  const restoreHabit = (id: string) => {
+    const todayKey = getDateKey(new Date());
 
-  const archiveHabit = (
-    id: string
-  ) => {
-    const archivedAt =
-      new Date().toISOString();
+    setHabits((currentHabits) =>
+      currentHabits.map((habit) => {
+        if (habit.id !== id) {
+          return habit;
+        }
 
-    setHabits(
-      (currentHabits) =>
-        currentHabits.map(
-          (habit) =>
-            habit.id === id
-              ? {
-                  ...habit,
+        // Dni od archiwizacji do przywrócenia nie należą do aktywnego okresu.
+        const gapFrom = habit.archivedAt
+          ? addDaysToDateKey(getDateKey(new Date(habit.archivedAt)), 1)
+          : null;
+        const gapTo = addDaysToDateKey(todayKey, -1);
 
-                  archived: true,
-
-                  archivedAt,
-                }
-              : habit
-        )
+        return {
+          ...habit,
+          archived: false,
+          archivedAt: null,
+          inactivePeriods:
+            gapFrom && gapFrom <= gapTo
+              ? [
+                  ...(habit.inactivePeriods ?? []),
+                  { from: gapFrom, to: gapTo },
+                ]
+              : habit.inactivePeriods,
+        };
+      })
     );
   };
 
-  // =========================
-  // PRZYWRACANIE NAWYKU
-  // =========================
-
-  const restoreHabit = (
-    id: string
-  ) => {
-    setHabits(
-      (currentHabits) =>
-        currentHabits.map(
-          (habit) =>
-            habit.id === id
-              ? {
-                  ...habit,
-
-                  archived: false,
-
-                  archivedAt: null,
-                }
-              : habit
-        )
+  const removeHabit = (id: string) => {
+    setHabits((currentHabits) =>
+      currentHabits.filter((habit) => habit.id !== id)
     );
   };
-
-  // =========================
-  // USUWANIE NAWYKU
-  // =========================
-
-  const removeHabit = (
-    id: string
-  ) => {
-    setHabits(
-      (currentHabits) =>
-        currentHabits.filter(
-          (habit) =>
-            habit.id !== id
-        )
-    );
-  };
-
-  // =========================
-  // PROVIDER
-  // =========================
 
   return (
     <HabitsContext.Provider
       value={{
         habits,
-
         isLoading,
-
+        loadFailed,
+        reload,
         addHabit,
-
         updateHabit,
-
         removeHabit,
-
         archiveHabit,
-
         restoreHabit,
       }}
     >
