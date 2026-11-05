@@ -35,7 +35,9 @@ export function usePersistentList<T>(
   const [isLoading, setIsLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [remoteReady, setRemoteReady] = useState(false);
+  // Ostatnia zawartość zgodna z chmurą (po normalizacji) - chroni przed pętlą echa.
   const lastSyncedRef = useRef<string | null>(null);
+  const lastRemoteRef = useRef<string | null>(null);
 
   const applyResult = useCallback(
     (result: Awaited<ReturnType<typeof loadStoredJson>>) => {
@@ -122,12 +124,14 @@ export function usePersistentList<T>(
         const json = snapshot.data().items as string;
         first = false;
 
-        if (json !== lastSyncedRef.current) {
+        if (json !== lastRemoteRef.current) {
           try {
             const parsed = JSON.parse(json);
             if (Array.isArray(parsed)) {
-              lastSyncedRef.current = json;
-              setItems(normalize(parsed));
+              const next = normalize(parsed);
+              lastRemoteRef.current = json;
+              lastSyncedRef.current = JSON.stringify(next);
+              setItems(next);
             }
           } catch (error) {
             console.error(`Uszkodzone dane zdalne ${storageKey}:`, error);
@@ -150,10 +154,12 @@ export function usePersistentList<T>(
     if (json === lastSyncedRef.current) return;
 
     lastSyncedRef.current = json;
+    lastRemoteRef.current = json;
     setDoc(listDoc(uid, storageKey), {
       items: json,
       updatedAt: new Date().toISOString(),
     }).catch((error) => {
+      lastRemoteRef.current = null;
       lastSyncedRef.current = null;
       console.error(`Błąd zapisu w chmurze ${storageKey}:`, error);
     });

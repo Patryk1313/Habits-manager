@@ -5,7 +5,7 @@ import {
   getAuth,
   initializeAuth,
 } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, getFirestore } from "firebase/firestore";
 import { Platform } from "react-native";
 
 // Zmienne EXPO_PUBLIC_* trafiają do paczki i są publiczne z założenia -
@@ -47,4 +47,17 @@ function createAuth(): Auth | null {
 }
 
 export const auth = createAuth();
-export const db = app ? getFirestore(app) : null;
+// Auto-wykrywanie long pollingu: na części sieci mobilnych WebSocket jest blokowany,
+// przez co zmiany nie dochodziłyby na żywo.
+function createDb() {
+  if (!app) return null;
+  try {
+    return initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+    });
+  } catch {
+    return getFirestore(app);
+  }
+}
+
+export const db = createDb();
