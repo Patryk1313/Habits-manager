@@ -85,12 +85,16 @@ function createProgressBuckets(range: Range) {
 
   return buckets;
 }
+function isFutureBucket(bucket: Range) {
+  return bucket.start > startOfDay(new Date());
+}
 function createPeriodChartBuckets(
   range: Range,
   period: Period
 ): Range[] {
   if (period === "week") {
-    return eachDay(range.start, range.end).map((date) => ({
+    // Zawsze pełny tydzień pon-nd; dni z przyszłości są puste na wykresie.
+    return eachDay(range.start, addDays(range.start, 6)).map((date) => ({
       start: date,
       end: date,
     }));
@@ -130,7 +134,7 @@ function getPeriodBucketLabel(
   period: Period
 ) {
   if (period === "week") {
-    return ["N", "P", "W", "Ś", "C", "P", "S"][bucket.start.getDay()];
+    return ["P", "W", "Ś", "C", "P", "S", "N"][(bucket.start.getDay() + 6) % 7];
   }
   if (period === "month") {
     return `${bucket.start.getDate()}-${bucket.end.getDate()}`;
@@ -331,6 +335,19 @@ export default function ProgressScreen() {
       // =====================
       // TYDZIEŃ / MIESIĄC
       // =====================
+      if (period === "week") {
+        // Bieżący tydzień kalendarzowy (pon-dziś) vs tyle samo dni tygodnia wcześniej.
+        const weekStart = startOfWeekMonday(today);
+        const elapsed = differenceInDays(today, weekStart);
+        const previousStart = addDays(weekStart, -7);
+        return {
+          active: { start: weekStart, end: today },
+          previous: {
+            start: previousStart,
+            end: addDays(previousStart, elapsed),
+          },
+        };
+      }
       const currentStart =
         addDays(
           today,
@@ -530,7 +547,7 @@ export default function ProgressScreen() {
         return {
           label: getPeriodBucketLabel(bucket, index, period),
           value:
-            stats.expected > 0
+            stats.expected > 0 && !isFutureBucket(bucket)
               ? calculateSuccessRateFromCounts(stats)
               : null,
         };
@@ -558,15 +575,17 @@ export default function ProgressScreen() {
             period === "week"
               ? getDateAxisLabel(bucket.start)
               : undefined,
-          completed: stats.completed,
-          missed: Math.max(0, stats.expected - stats.completed),
+          completed: isFutureBucket(bucket) ? 0 : stats.completed,
+          missed: isFutureBucket(bucket)
+            ? 0
+            : Math.max(0, stats.expected - stats.completed),
         };
       }),
     [chartBuckets, period, habits, entries]
   );
   const regularityPeriodLabel =
     period === "week"
-      ? "7 DNI"
+      ? "TEN TYDZIEŃ"
       : period === "month"
         ? "30 DNI"
         : "CAŁY OKRES";
@@ -705,7 +724,10 @@ export default function ProgressScreen() {
         );
         return {
           label: getPeriodBucketLabel(bucket, index, period),
-          value: stats.expected > 0 ? stats.successRate : null,
+          value:
+            stats.expected > 0 && !isFutureBucket(bucket)
+              ? stats.successRate
+              : null,
         };
       }),
     [period, routineChartBuckets, routines, routineEntries]
@@ -724,8 +746,10 @@ export default function ProgressScreen() {
             period === "week"
               ? getDateAxisLabel(bucket.start)
               : undefined,
-          completed: stats.completed,
-          missed: Math.max(0, stats.expected - stats.completed),
+          completed: isFutureBucket(bucket) ? 0 : stats.completed,
+          missed: isFutureBucket(bucket)
+            ? 0
+            : Math.max(0, stats.expected - stats.completed),
         };
       }),
     [period, routineChartBuckets, routines, routineEntries]
