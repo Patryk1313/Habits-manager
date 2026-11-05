@@ -30,7 +30,7 @@ self.addEventListener("fetch", (event) => {
       .catch(() =>
         caches
           .match(request)
-          .then((cached) => cached || caches.match("/"))
+          .then((cached) => cached || caches.match(self.registration.scope))
       )
   );
 });

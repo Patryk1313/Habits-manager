@@ -11,7 +11,7 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, viewport-fit=cover"
         />
-        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="manifest" href="/Habits-manager/manifest.webmanifest" />
         <meta name="theme-color" content="#000000" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -20,7 +20,7 @@ export default function Root({ children }: PropsWithChildren) {
           name="apple-mobile-web-app-status-bar-style"
           content="black-translucent"
         />
-        <link rel="apple-touch-icon" href="/icon-180.png" />
+        <link rel="apple-touch-icon" href="/Habits-manager/icon-180.png" />
         <ScrollViewStyleReset />
       </head>
       <body>
@@ -28,7 +28,7 @@ export default function Root({ children }: PropsWithChildren) {
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js');});}",
+              "if('serviceWorker' in navigator){window.addEventListener('load',function(){navigator.serviceWorker.register('/Habits-manager/sw.js');});}",
           }}
         />
       </body>
