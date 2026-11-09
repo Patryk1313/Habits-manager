@@ -19,10 +19,13 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import HabitIcon from "../../components/HabitIcon";
+import RoutineSkipButton from "../../components/RoutineSkipButton";
+import { getRoutineDayStatus } from "../../utils/routine-status";
 import { getFrequencyLabel } from "../../components/FrequencyPicker";
 import { useHabits } from "../../context/HabitsContext";
 import { useHabitEntries } from "../../context/HabitEntriesContext";
@@ -101,12 +104,12 @@ function getRelativeDateLabel(
   );
 }
 // =========================
-// DZIŚ I 7 POPRZEDNICH DNI
+// Ostatnie dni; na desktopie pokazujemy dwa tygodnie.
 // =========================
-function createDays(): Day[] {
+function createDays(daysToShow: number): Day[] {
   const today = new Date();
   const days: Day[] = [];
-  for (let i = 7; i >= 0; i--) {
+  for (let i = daysToShow - 1; i >= 0; i--) {
     const date = new Date(today);
     date.setDate(
       today.getDate() - i
@@ -197,6 +200,8 @@ export default function Index() {
   const router = useRouter();
   const { mode, colors } = useTheme();
   const styles = createStyles(colors);
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 960;
   // =========================
   // NAWYKI
   // =========================
@@ -209,8 +214,10 @@ export default function Index() {
   // =========================
   const {
     entries,
+    getEntry,
     isHabitCompleted,
     toggleHabit: toggleHabitEntry,
+    setHabitSkipped,
     isLoading: entriesLoading,
   } = useHabitEntries();
   // =========================
@@ -224,9 +231,11 @@ export default function Index() {
   // HISTORIA RUTYN
   // =========================
   const {
+    entries: routineEntries,
     isStepCompleted,
     toggleStep,
-    getRoutineCompletedCount,
+    isStepSkipped,
+    isRoutineSkipped,
     isLoading: routineEntriesLoading,
   } = useRoutineEntries();
   // =========================
@@ -261,7 +270,7 @@ export default function Index() {
   // =========================
   // DATY
   // =========================
-  const days = createDays();
+  const days = createDays(isDesktop ? 14 : 8);
   const today = new Date();
   const selectedDate =
     days.find(
@@ -344,22 +353,7 @@ export default function Index() {
   // =========================
   const completedRoutinesCount =
     selectedDateRoutines.filter(
-      (routine) => {
-        if (
-          routine.steps.length === 0
-        ) {
-          return false;
-        }
-        const completed =
-          getRoutineCompletedCount(
-            routine.id,
-            selectedDateKey
-          );
-        return (
-          completed ===
-          routine.steps.length
-        );
-      }
+      (routine) => getRoutineDayStatus(routine, routineEntries, selectedDateKey).isCompleted
     ).length;
   // =========================
   // ZAZNACZANIE NAWYKU
@@ -471,7 +465,10 @@ export default function Index() {
         <ScrollView
           style={styles.content}
           contentContainerStyle={
-            styles.contentContainer
+            [
+              styles.contentContainer,
+              isDesktop && styles.desktopContentContainer,
+            ]
           }
           showsVerticalScrollIndicator={
             false
@@ -531,7 +528,7 @@ export default function Index() {
                 false
               }
               contentContainerStyle={
-                styles.timeline
+                [styles.timeline, isDesktop && styles.desktopTimeline]
               }
             >
               {days.map((day) => {
@@ -548,6 +545,7 @@ export default function Index() {
                     }
                     style={[
                       styles.dayItem,
+                      isDesktop && styles.desktopDayItem,
                       isSelected &&
                         styles.selectedDayItem,
                     ]}
@@ -702,6 +700,9 @@ export default function Index() {
                 const done =
                   categoryHabits.filter(
                     (habit) => {
+                      if (getEntry(habit.id, selectedDateKey)?.skipped) {
+                        return false;
+                      }
                       if (
                         isHabitCompleted(
                           habit.id,
@@ -769,7 +770,9 @@ export default function Index() {
                         >
                           {done}/
                           {
-                            categoryHabits.length
+                            categoryHabits.filter(
+                              (habit) => !getEntry(habit.id, selectedDateKey)?.skipped
+                            ).length
                           }
                         </Text>
                       </View>
@@ -788,6 +791,8 @@ export default function Index() {
                     {!isCollapsed &&
                       categoryHabits.map(
                         (habit) => {
+                          const skipped =
+                            getEntry(habit.id, selectedDateKey)?.skipped ?? false;
                           const entryCompleted =
                             isHabitCompleted(
                               habit.id,
@@ -828,10 +833,10 @@ export default function Index() {
                             weeklyCount >=
                               weeklyTarget;
                           const completed =
-                            entryCompleted ||
-                            weeklyGoalReached;
+                            !skipped && (entryCompleted || weeklyGoalReached);
                           const canToggleHabit =
                             canEditSelectedDate &&
+                            !skipped &&
                             (!weeklyGoalReached || entryCompleted);
                           return (
                             <Pressable
@@ -892,7 +897,9 @@ export default function Index() {
                                     styles.habitSubtitle
                                   }
                                 >
-                                  {completed
+                                  {skipped
+                                    ? "Pominięto"
+                                    : completed
                                     ? "Wykonano"
                                     : "Do wykonania"}
                                   {" · "}
@@ -1010,6 +1017,21 @@ export default function Index() {
                                   </View>
                                 )}
                               </View>
+                              {canEditSelectedDate && !entryCompleted && (
+                                <Pressable
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${skipped ? "Cofnij pominięcie" : "Pomiń"}: ${habit.name}`}
+                                  onPress={(event) => {
+                                    event.stopPropagation();
+                                    setHabitSkipped(habit.id, selectedDateKey, !skipped);
+                                  }}
+                                  style={styles.skipButton}
+                                >
+                                  <Text style={styles.skipButtonText}>
+                                    {skipped ? "Cofnij" : "Pomiń"}
+                                  </Text>
+                                </Pressable>
+                              )}
                               {/* CHECK */}
                               <Pressable
                                 disabled={!canToggleHabit}
@@ -1114,7 +1136,9 @@ export default function Index() {
                       }
                       /
                       {
-                        selectedDateRoutines.length
+                        selectedDateRoutines.filter((routine) =>
+                          getRoutineDayStatus(routine, routineEntries, selectedDateKey).expected > 0
+                        ).length
                       }
                     </Text>
                   </View>
@@ -1141,13 +1165,10 @@ export default function Index() {
                             a.order -
                             b.order
                         );
-                      const completedCount =
-                        getRoutineCompletedCount(
-                          routine.id,
-                          selectedDateKey
-                        );
+                      const status = getRoutineDayStatus(routine, routineEntries, selectedDateKey);
+                      const completedCount = status.completed;
                       const totalSteps =
-                        sortedSteps.length;
+                        status.expected;
                       const progress =
                         totalSteps > 0
                           ? Math.round(
@@ -1156,10 +1177,7 @@ export default function Index() {
                                 100
                             )
                           : 0;
-                      const completed =
-                        totalSteps > 0 &&
-                        completedCount ===
-                          totalSteps;
+                      const completed = status.isCompleted;
                       const isRoutineCollapsed =
                         collapsedRoutineIds.includes(
                           routine.id
@@ -1266,6 +1284,7 @@ export default function Index() {
                               <ChevronUp size={20} color={colors.textMuted} />
                             )}
                           </Pressable>
+                          <RoutineSkipButton routineId={routine.id} date={selectedDateKey} label={routine.name} disabled={!canEditSelectedDate} />
                           {!isRoutineCollapsed && (
                             <>
                           {/* PROGRESS */}
@@ -1284,7 +1303,7 @@ export default function Index() {
                                   styles.routineProgressLabel
                                 }
                               >
-                                {completed
+                                {status.skipped ? "Pominięto rutynę" : totalSteps === 0 ? "Pominięto wszystkie czynności" : completed
                                   ? "Rutyna ukończona"
                                   : "Postęp"}
                               </Text>
@@ -1297,7 +1316,7 @@ export default function Index() {
                                   },
                                 ]}
                               >
-                                {progress}%
+                                {totalSteps > 0 ? `${progress}%` : "—"}
                               </Text>
                             </View>
                             <View
@@ -1341,7 +1360,7 @@ export default function Index() {
                                     }
                                   >
                                     <Pressable
-                                      disabled={!canEditSelectedDate}
+                                      disabled={!canEditSelectedDate || isRoutineSkipped(routine.id, selectedDateKey) || isStepSkipped(routine.id, step.id, selectedDateKey)}
                                       onPress={() =>
                                         toggleRoutineStep(
                                           routine.id,
@@ -1387,6 +1406,10 @@ export default function Index() {
                                         }
                                       </Text>
                                     </Pressable>
+                                    {isStepSkipped(routine.id, step.id, selectedDateKey) && (
+                                      <Text style={styles.habitSubtitle}>Pominięto</Text>
+                                    )}
+                                    <RoutineSkipButton routineId={routine.id} stepId={step.id} date={selectedDateKey} label={step.name} disabled={!canEditSelectedDate} />
                                     {index <
                                       sortedSteps.length -
                                         1 && (
@@ -1527,6 +1550,11 @@ function createStyles(colors: AppThemeColors) {
     paddingTop: 12,
     paddingBottom: 28,
   },
+  desktopContentContainer: {
+    paddingHorizontal: 28,
+    paddingTop: 24,
+    paddingBottom: 40,
+  },
   // =========================
   // TIMELINE
   // =========================
@@ -1560,6 +1588,12 @@ function createStyles(colors: AppThemeColors) {
     marginBottom: 22,
     paddingVertical: 12,
   },
+  desktopDayItem: {
+    flexGrow: 1,
+    minWidth: 58,
+    minHeight: 82,
+    borderRadius: 16,
+  },
   readOnlyNotice: {
     color: colors.textMuted,
     fontSize: 11,
@@ -1570,6 +1604,9 @@ function createStyles(colors: AppThemeColors) {
   timeline: {
     paddingHorizontal: 10,
     gap: 9,
+  },
+  desktopTimeline: {
+    flexGrow: 1,
   },
   dayItem: {
     width: 58,
@@ -1751,6 +1788,15 @@ function createStyles(colors: AppThemeColors) {
   habitInfo: {
     flex: 1,
     justifyContent: "center",
+  },
+  skipButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+  },
+  skipButtonText: {
+    color: colors.textSecondary,
+    fontSize: 12,
+    fontWeight: "600",
   },
   habitName: {
     color: colors.text,

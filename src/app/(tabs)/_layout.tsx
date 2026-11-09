@@ -65,9 +65,8 @@ export default function TabsLayout() {
 
         sceneStyle: isDesktop
           ? {
-              width: "100%",
-              maxWidth: 1440,
-              alignSelf: "center",
+              flex: 1,
+              backgroundColor: colors.background,
             }
           : undefined,
       }}

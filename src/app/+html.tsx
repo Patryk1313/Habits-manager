@@ -23,7 +23,7 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="apple-touch-icon" href="/Habits-manager/icon-180.png" />
         <ScrollViewStyleReset />
       </head>
-      <body>
+      <body style={{ margin: 0, minHeight: "100vh", backgroundColor: "#050505" }}>
         {children}
         <script
           dangerouslySetInnerHTML={{

@@ -69,6 +69,8 @@ type HabitEntriesContextType = {
     value?: number | null
   ) => void;
 
+  setHabitSkipped: (habitId: string, date: string, skipped: boolean) => void;
+
   removeEntry: (
     habitId: string,
     date: string
@@ -130,6 +132,7 @@ export function HabitEntriesProvider({
       const completed = resolveCompleted(existing?.completed ?? false);
       const patch = {
         completed,
+        skipped: false,
         value: completed ? value : null,
         completedAt: completed
           ? existing?.completed
@@ -175,6 +178,31 @@ export function HabitEntriesProvider({
     upsertEntry(habitId, date, (current) => !current, value);
   };
 
+  const setHabitSkipped = (habitId: string, date: string, skipped: boolean) => {
+    setEntries((currentEntries) => {
+      const existing = currentEntries.find(
+        (entry) => entry.habitId === habitId && entry.date === date
+      );
+      const now = new Date().toISOString();
+      const patch = {
+        skipped,
+        completed: false,
+        value: null,
+        completedAt: null,
+        updatedAt: now,
+      };
+      if (existing) {
+        return currentEntries.map((entry) =>
+          entry === existing ? { ...entry, ...patch } : entry
+        );
+      }
+      return [
+        ...currentEntries,
+        { id: `${habitId}-${date}-${Date.now()}`, habitId, date, createdAt: now, ...patch },
+      ];
+    });
+  };
+
   const removeEntry = (habitId: string, date: string) => {
     setEntries((currentEntries) =>
       currentEntries.filter(
@@ -201,6 +229,7 @@ export function HabitEntriesProvider({
         isHabitCompleted,
         toggleHabit,
         setHabitCompleted,
+        setHabitSkipped,
         removeEntry,
         removeEntriesForHabit,
       }}

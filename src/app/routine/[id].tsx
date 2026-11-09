@@ -14,6 +14,8 @@ import {
 
 import { SafeAreaView } from "react-native-safe-area-context";
 import HabitIcon from "../../components/HabitIcon";
+import RoutineSkipButton from "../../components/RoutineSkipButton";
+import { getRoutineDayStatus } from "../../utils/routine-status";
 
 import { useRoutines } from "../../context/RoutinesContext";
 import { useRoutineEntries } from "../../context/RoutineEntriesContext";
@@ -156,9 +158,11 @@ export default function RoutineDetailsScreen() {
   } = useRoutines();
 
   const {
+    entries,
     isStepCompleted,
     toggleStep,
-    getRoutineCompletedCount,
+    isStepSkipped,
+    isRoutineSkipped,
     isLoading: entriesLoading,
   } = useRoutineEntries();
 
@@ -273,14 +277,9 @@ export default function RoutineDetailsScreen() {
       a.order - b.order
   );
 
-  const totalSteps =
-    sortedSteps.length;
-
-  const completedCount =
-    getRoutineCompletedCount(
-      routine.id,
-      todayKey
-    );
+  const status = getRoutineDayStatus(routine, entries, todayKey);
+  const totalSteps = status.expected;
+  const completedCount = status.completed;
 
   const progress =
     totalSteps > 0
@@ -291,10 +290,7 @@ export default function RoutineDetailsScreen() {
         )
       : 0;
 
-  const completed =
-    totalSteps > 0 &&
-    completedCount ===
-      totalSteps;
+  const completed = status.isCompleted;
 
   // =========================
   // RENDER
@@ -506,7 +502,7 @@ export default function RoutineDetailsScreen() {
                   },
                 ]}
               >
-                {progress}%
+                {totalSteps > 0 ? `${progress}%` : "—"}
               </Text>
             </View>
 
@@ -542,6 +538,8 @@ export default function RoutineDetailsScreen() {
             CZYNNOŚCI
           </Text>
 
+          <RoutineSkipButton routineId={routine.id} date={todayKey} label={routine.name} />
+          {status.skipped && <Text style={styles.stepNumber}>Pominięto rutynę</Text>}
           <View
             style={styles.stepsCard}
           >
@@ -580,6 +578,7 @@ export default function RoutineDetailsScreen() {
                       key={step.id}
                     >
                       <Pressable
+                        disabled={isRoutineSkipped(routine.id, todayKey) || isStepSkipped(routine.id, step.id, todayKey)}
                         onPress={() =>
                           toggleStep(
                             routine.id,
@@ -646,6 +645,10 @@ export default function RoutineDetailsScreen() {
                           </Text>
                         </View>
                       </Pressable>
+                      {isStepSkipped(routine.id, step.id, todayKey) && (
+                        <Text style={styles.stepNumber}>Pominięto</Text>
+                      )}
+                      <RoutineSkipButton routineId={routine.id} stepId={step.id} date={todayKey} label={step.name} />
 
                       {index <
                         sortedSteps.length -

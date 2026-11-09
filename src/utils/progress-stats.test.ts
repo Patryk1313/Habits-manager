@@ -5,8 +5,10 @@ import type { HabitFrequency } from "../components/FrequencyPicker";
 import type { Habit } from "../types/habit";
 import {
   calculateDailyProgressStats,
+  calculateHabitBestStreak,
   calculateOnTimeStats,
   calculateProgressStats,
+  getTimesPerWeekStats,
   isScheduledDay,
   parseDateKey,
 } from "./progress-stats";
@@ -41,6 +43,36 @@ const entry = (date: string, extra = {}) => ({
 const range = (from: string, to: string) => ({
   start: parseDateKey(from),
   end: parseDateKey(to),
+});
+
+test("pominięty dzień nie jest oczekiwany ani wykonany w statystykach", () => {
+  const habit = makeHabit();
+  const entries = [
+    entry("2025-01-01"),
+    entry("2025-01-02", { completed: false, skipped: true }),
+    entry("2025-01-03"),
+  ];
+  const stats = calculateProgressStats([habit], entries, range("2025-01-01", "2025-01-03"));
+  assert.equal(stats.expected, 2);
+  assert.equal(stats.completed, 2);
+  assert.equal(stats.successRate, 100);
+  assert.equal(calculateDailyProgressStats([habit], entries, parseDateKey("2025-01-02")).expected, 0);
+  assert.equal(calculateHabitBestStreak(
+    makeHabit({ archived: true, archivedAt: "2025-01-03T23:59:00" }),
+    entries
+  ), 2);
+});
+
+test("pominięcie zmniejsza dostępną część celu tygodniowego", () => {
+  const habit = makeHabit({
+    frequency: { ...daily, type: "timesPerWeek", timesPerWeek: 7 },
+  });
+  const entries = [
+    entry("2025-01-06"),
+    entry("2025-01-07", { completed: false, skipped: true }),
+  ];
+  const stats = getTimesPerWeekStats(habit, range("2025-01-06", "2025-01-12"), entries);
+  assert.deepEqual(stats, { expected: 6, completed: 1 });
 });
 
 test("nowy nawyk nie istnieje w dniach przed utworzeniem", () => {

@@ -9,6 +9,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import HabitIcon from "../../components/HabitIcon";
+import RoutineSkipButton from "../../components/RoutineSkipButton";
+import { getRoutineDayStatus } from "../../utils/routine-status";
 import {
   Check,
   CheckCircle2,
@@ -100,9 +102,11 @@ export default function RoutinesScreen() {
   // HISTORIA RUTYN
   // =========================
   const {
+    entries,
     isStepCompleted,
     toggleStep,
-    getRoutineCompletedCount,
+    isStepSkipped,
+    isRoutineSkipped,
     isLoading: entriesLoading,
   } = useRoutineEntries();
   // =========================
@@ -135,23 +139,11 @@ export default function RoutinesScreen() {
   // =========================
   const completedToday =
     todayRoutines.filter(
-      (routine) => {
-        if (
-          routine.steps.length === 0
-        ) {
-          return false;
-        }
-        const completed =
-          getRoutineCompletedCount(
-            routine.id,
-            todayKey
-          );
-        return (
-          completed ===
-          routine.steps.length
-        );
-      }
+      (routine) => getRoutineDayStatus(routine, entries, todayKey).isCompleted
     ).length;
+  const expectedToday = todayRoutines.filter(
+    (routine) => getRoutineDayStatus(routine, entries, todayKey).expected > 0
+  ).length;
   // =========================
   // LOADING
   // =========================
@@ -271,7 +263,7 @@ export default function RoutinesScreen() {
                   styles.summaryNumber
                 }
               >
-                {todayRoutines.length}
+                {expectedToday}
               </Text>
               <Text
                 style={
@@ -315,7 +307,7 @@ export default function RoutinesScreen() {
             >
               DZISIAJ
             </Text>
-            {todayRoutines.length >
+            {expectedToday >
               0 && (
               <Text
                 style={
@@ -323,7 +315,7 @@ export default function RoutinesScreen() {
                 }
               >
                 {completedToday}/
-                {todayRoutines.length}
+                {expectedToday}
               </Text>
             )}
           </View>
@@ -415,13 +407,10 @@ export default function RoutinesScreen() {
             >
               {todayRoutines.map(
                 (routine) => {
-                  const completedCount =
-                    getRoutineCompletedCount(
-                      routine.id,
-                      todayKey
-                    );
+                  const status = getRoutineDayStatus(routine, entries, todayKey);
+                  const completedCount = status.completed;
                   const totalSteps =
-                    routine.steps.length;
+                    status.expected;
                   const progress =
                     totalSteps > 0
                       ? Math.round(
@@ -430,10 +419,7 @@ export default function RoutinesScreen() {
                             100
                         )
                       : 0;
-                  const isCompleted =
-                    totalSteps > 0 &&
-                    completedCount ===
-                      totalSteps;
+                  const isCompleted = status.isCompleted;
                   const sortedSteps = [
                     ...routine.steps,
                   ].sort(
@@ -537,6 +523,7 @@ export default function RoutinesScreen() {
                         </View>
                         <ChevronRight size={21} color={colors.textMuted} strokeWidth={2} />
                       </Pressable>
+                      <RoutineSkipButton routineId={routine.id} date={todayKey} label={routine.name} />
                       {/* ================= */}
                       {/* PROGRESS */}
                       {/* ================= */}
@@ -555,7 +542,7 @@ export default function RoutinesScreen() {
                               styles.progressLabel
                             }
                           >
-                            {isCompleted
+                            {status.skipped ? "Pominięto rutynę" : totalSteps === 0 ? "Pominięto wszystkie czynności" : isCompleted
                               ? "Rutyna ukończona"
                               : "Dzisiejszy postęp"}
                           </Text>
@@ -568,7 +555,7 @@ export default function RoutinesScreen() {
                               },
                             ]}
                           >
-                            {progress}%
+                            {totalSteps > 0 ? `${progress}%` : "—"}
                           </Text>
                         </View>
                         <View
@@ -614,6 +601,7 @@ export default function RoutinesScreen() {
                                 }
                               >
                                 <Pressable
+                                  disabled={isRoutineSkipped(routine.id, todayKey) || isStepSkipped(routine.id, step.id, todayKey)}
                                   onPress={() =>
                                     toggleStep(
                                       routine.id,
@@ -656,6 +644,10 @@ export default function RoutinesScreen() {
                                     }
                                   </Text>
                                 </Pressable>
+                                {isStepSkipped(routine.id, step.id, todayKey) && (
+                                  <Text style={styles.stepName}>Pominięto</Text>
+                                )}
+                                <RoutineSkipButton routineId={routine.id} stepId={step.id} date={todayKey} label={step.name} />
                                 {index <
                                   sortedSteps.length -
                                     1 && (
@@ -686,7 +678,7 @@ export default function RoutinesScreen() {
                           <View style={styles.completedBannerContent}>
                             <CheckCircle2 size={16} color={routine.color} strokeWidth={2.2} />
                             <Text style={[styles.completedBannerText, { color: routine.color }]}>
-                              Wszystkie czynności wykonane
+                              Zaplanowane czynności wykonane
                             </Text>
                           </View>
                         </View>

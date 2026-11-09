@@ -32,6 +32,7 @@ type ActivityDay = {
   date: Date;
   dateKey: string;
   completed: boolean;
+  skipped: boolean;
   isToday: boolean;
 };
 // =========================
@@ -139,6 +140,9 @@ export default function HabitActivityGrid({
             entry.date
         )
     );
+  const skippedDates = new Set(
+    entries.filter((entry) => entry.habitId === habit.id && entry.skipped).map((entry) => entry.date)
+  );
   // =========================
   // OBECNY TYDZIEŃ
   // =========================
@@ -197,6 +201,7 @@ export default function HabitActivityGrid({
           completedDates.has(
             dateKey
           ),
+        skipped: skippedDates.has(dateKey),
         isToday:
           dateKey === todayKey,
       });
@@ -444,10 +449,14 @@ export default function HabitActivityGrid({
                           key={
                             day.dateKey
                           }
+                          accessible
+                          accessibilityLabel={`${day.dateKey}: ${isFuture ? "przyszły dzień" : day.skipped ? "pominięto" : day.completed ? "wykonano" : "brak wykonania"}`}
                           style={[
                             styles.cell,
                             isFuture
                               ? styles.futureCell
+                              : day.skipped
+                                ? { backgroundColor: colors.textMuted, borderColor: colors.textMuted }
                               : day.completed
                                 ? {
                                     backgroundColor:
@@ -518,6 +527,8 @@ export default function HabitActivityGrid({
           >
             Wykonano
           </Text>
+          <View style={[styles.legendCell, { backgroundColor: colors.textMuted, borderColor: colors.textMuted }]} />
+          <Text style={styles.legendText}>Pominięto</Text>
         </View>
         {/* =================== */}
         {/* LICZBA */}

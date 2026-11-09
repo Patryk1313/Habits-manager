@@ -19,7 +19,7 @@ function normalizeRoutineEntries(items: unknown[]) {
 
   for (const entry of items as RoutineEntry[]) {
     byKey.set(
-      `${entry.routineId}|${entry.stepId}|${entry.date}`,
+      JSON.stringify([entry.routineId, entry.date, entry.scope === "routine" ? null : entry.stepId]),
       entry
     );
   }
@@ -39,6 +39,8 @@ export type RoutineEntry = {
   date: string;
 
   completed: boolean;
+  skipped?: boolean;
+  scope?: "routine";
 };
 
 // =========================
@@ -65,6 +67,11 @@ type RoutineEntriesContextType = {
     stepId: string,
     date: string
   ) => void;
+
+  isRoutineSkipped: (routineId: string, date: string) => boolean;
+  isStepSkipped: (routineId: string, stepId: string, date: string) => boolean;
+  setRoutineSkipped: (routineId: string, date: string, skipped: boolean) => void;
+  setStepSkipped: (routineId: string, stepId: string, date: string, skipped: boolean) => void;
 
   getRoutineCompletedCount: (
     routineId: string,
@@ -123,9 +130,10 @@ export function RoutineEntriesProvider({
     return entries.some(
       (entry) =>
         entry.routineId === routineId &&
+        entry.scope !== "routine" &&
         entry.stepId === stepId &&
         entry.date === date &&
-        entry.completed
+        entry.completed && !entry.skipped
     );
   };
 
@@ -143,6 +151,7 @@ export function RoutineEntriesProvider({
         currentEntries.findIndex(
           (entry) =>
             entry.routineId === routineId &&
+            entry.scope !== "routine" &&
             entry.stepId === stepId &&
             entry.date === date
         );
@@ -168,11 +177,37 @@ export function RoutineEntriesProvider({
                 ...entry,
                 completed:
                   !entry.completed,
+                skipped: false,
               }
             : entry
       );
     });
   };
+
+  const isRoutineSkipped = (routineId: string, date: string) =>
+    entries.some((entry) => entry.routineId === routineId && entry.date === date &&
+      entry.scope === "routine" && entry.skipped);
+
+  const isStepSkipped = (routineId: string, stepId: string, date: string) =>
+    entries.some((entry) => entry.routineId === routineId && entry.date === date &&
+      entry.scope !== "routine" && entry.stepId === stepId && entry.skipped);
+
+  const setSkip = (routineId: string, stepId: string, date: string, skipped: boolean, whole: boolean) => {
+    setEntries((current) => {
+      const matches = (entry: RoutineEntry) => entry.routineId === routineId &&
+        entry.date === date && (whole ? entry.scope === "routine" :
+          entry.scope !== "routine" && entry.stepId === stepId);
+      if (!skipped) return current.filter((entry) => !matches(entry));
+      const existing = current.find(matches);
+      const updated: RoutineEntry = { routineId, stepId, date, completed: false, skipped: true,
+        ...(whole ? { scope: "routine" } : {}) };
+      return existing ? current.map((entry) => matches(entry) ? updated : entry) : [...current, updated];
+    });
+  };
+  const setRoutineSkipped = (routineId: string, date: string, skipped: boolean) =>
+    setSkip(routineId, "", date, skipped, true);
+  const setStepSkipped = (routineId: string, stepId: string, date: string, skipped: boolean) =>
+    setSkip(routineId, stepId, date, skipped, false);
 
   // =========================
   // LICZBA WYKONANYCH
@@ -185,8 +220,9 @@ export function RoutineEntriesProvider({
     return entries.filter(
       (entry) =>
         entry.routineId === routineId &&
+        entry.scope !== "routine" &&
         entry.date === date &&
-        entry.completed
+        entry.completed && !entry.skipped
     ).length;
   };
 
@@ -221,6 +257,10 @@ export function RoutineEntriesProvider({
         isStepCompleted,
 
         toggleStep,
+        isRoutineSkipped,
+        isStepSkipped,
+        setRoutineSkipped,
+        setStepSkipped,
 
         getRoutineCompletedCount,
 

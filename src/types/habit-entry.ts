@@ -26,6 +26,9 @@ export type HabitEntry = {
 
   completed: boolean;
 
+  /** Pominięcie nie jest wykonaniem i nie obniża statystyk. */
+  skipped?: boolean;
+
   /**
    * Wartość używana przez nawyki
    * typu "quantity".

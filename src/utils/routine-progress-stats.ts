@@ -105,25 +105,36 @@ export function calculateRoutineDailyProgressStats(
       continue;
     }
 
+    const dayEntries = entries.filter((entry) =>
+      entry.routineId === routine.id && entry.date === dateKey
+    );
+    if (dayEntries.some((entry) => entry.scope === "routine" && entry.skipped)) {
+      continue;
+    }
+    const skippedStepIds = new Set(dayEntries.filter((entry) =>
+      entry.scope !== "routine" && entry.skipped
+    ).map((entry) => entry.stepId));
+    const expectedSteps = version.steps.filter((step) => !skippedStepIds.has(step.id));
+    if (expectedSteps.length === 0) continue;
     scheduledRoutines += 1;
-    expected += version.steps.length;
+    expected += expectedSteps.length;
 
     const completedStepIds = new Set(
-      entries
+      dayEntries
         .filter(
           (entry) =>
             entry.routineId === routine.id &&
             entry.date === dateKey &&
-            entry.completed
+            entry.completed && !entry.skipped && entry.scope !== "routine"
         )
         .map((entry) => entry.stepId)
     );
-    const completedStepCount = version.steps.filter((step) =>
+    const completedStepCount = expectedSteps.filter((step) =>
       completedStepIds.has(step.id)
     ).length;
 
     completed += completedStepCount;
-    if (completedStepCount === version.steps.length) {
+    if (completedStepCount === expectedSteps.length) {
       completedRoutines += 1;
     }
   }

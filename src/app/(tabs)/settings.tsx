@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { ChevronRight, Database, Palette, UserRound, X } from "lucide-react-native";
 import {
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -43,6 +45,14 @@ const accentOptions: AppAccentColor[] = [
   "pink",
   "orange",
 ];
+
+type SettingsSection = "account" | "appearance" | "data";
+
+const settingsSections = [
+  { id: "account", label: "Konto", description: "Twoje konto i wylogowanie", icon: UserRound },
+  { id: "appearance", label: "Wygląd aplikacji", description: "Motyw i kolor akcentu", icon: Palette },
+  { id: "data", label: "Twoje dane", description: "Kopia zapasowa i przywracanie danych", icon: Database },
+] as const;
 // =========================
 // EKRAN
 // =========================
@@ -55,7 +65,8 @@ export default function SettingsScreen() {
     setAccent,
   } = useTheme();
   const isDark = mode === "dark";
-  const [tab, setTab] = useState<"preferences" | "data">("preferences");
+  const [section, setSection] = useState<SettingsSection | null>(null);
+  const sectionTitle = settingsSections.find((item) => item.id === section)?.label;
   return (
     <View
       style={[
@@ -113,51 +124,69 @@ export default function SettingsScreen() {
               Dostosuj aplikację do siebie
             </Text>
           </View>
-          {/* TABS */}
-          <View
-            style={[
-              styles.tabs,
-              { backgroundColor: colors.surfaceSecondary },
-            ]}
-          >
-            {(
-              [
-                { id: "preferences", label: "Preferencje" },
-                { id: "data", label: "Dane" },
-              ] as const
-            ).map((item) => {
-              const active = tab === item.id;
+          <View style={[styles.menu, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            {settingsSections.map((item, index) => {
+              const Icon = item.icon;
               return (
                 <TouchableOpacity
                   key={item.id}
-                  onPress={() => setTab(item.id)}
+                  accessibilityRole="button"
+                  onPress={() => setSection(item.id)}
+                  activeOpacity={0.75}
                   style={[
-                    styles.tab,
-                    active && { backgroundColor: colors.accent },
+                    styles.menuRow,
+                    index > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.tabText,
-                      {
-                        color: active
-                          ? colors.accentForeground
-                          : colors.textSecondary,
-                      },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
+                  <View style={[styles.menuIcon, { backgroundColor: colors.surfaceSecondary }]}>
+                    <Icon size={20} color={colors.textSecondary} strokeWidth={2} />
+                  </View>
+                  <View style={styles.menuText}>
+                    <Text style={[styles.menuLabel, { color: colors.text }]}>{item.label}</Text>
+                    <Text style={[styles.menuDescription, { color: colors.textMuted }]}>{item.description}</Text>
+                  </View>
+                  <View style={[styles.menuArrow, { backgroundColor: colors.surfaceSecondary }]}>
+                    <ChevronRight size={18} color={colors.textSecondary} />
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
+        </ScrollView>
+      </SafeAreaView>
+      <Modal
+        visible={section !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSection(null)}
+      >
+        <SafeAreaView style={[styles.modalOverlay, { backgroundColor: colors.background }]}>
+          <View
+            accessibilityViewIsModal
+            style={[styles.modalCard, { backgroundColor: colors.background, borderColor: colors.border }]}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text accessibilityRole="header" style={[styles.modalTitle, { color: colors.text }]}>
+                {sectionTitle}
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Zamknij ustawienia"
+                onPress={() => setSection(null)}
+                style={[styles.modalClose, { backgroundColor: colors.surfaceSecondary }]}
+              >
+                <X size={20} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.modalContent}
+              keyboardShouldPersistTaps="handled"
+            >
+          {section === "data" && <DataSettings />}
+          {section === "account" && <AccountSettings />}
 
-          {tab === "data" && <DataSettings />}
-
-          {tab === "preferences" && (
+          {section === "appearance" && (
             <>
-          <AccountSettings />
           {/* ========================= */}
           {/* MOTYW */}
           {/* ========================= */}
@@ -631,8 +660,10 @@ export default function SettingsScreen() {
           </View>
             </>
           )}
-        </ScrollView>
-      </SafeAreaView>
+            </ScrollView>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
@@ -651,24 +682,81 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 50,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 15, 20, 0.42)",
+  },
+  modalCard: {
+    flex: 1,
+    width: "100%",
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 12,
+  },
+  modalClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    padding: 20,
+  },
   header: {
     marginBottom: 20,
   },
-  tabs: {
-    flexDirection: "row",
-    borderRadius: 16,
-    padding: 4,
+  menu: {
+    borderWidth: 1,
+    borderRadius: 20,
+    overflow: "hidden",
     marginBottom: 24,
   },
-  tab: {
-    flex: 1,
+  menuRow: {
+    flexDirection: "row",
     alignItems: "center",
-    borderRadius: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 14,
+    minHeight: 76,
   },
-  tabText: {
-    fontSize: 14,
-    fontWeight: "700",
+  menuIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  menuText: {
+    flex: 1,
+    gap: 3,
+  },
+  menuLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  menuDescription: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  menuArrow: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
   },
   title: {
     fontSize: 32,

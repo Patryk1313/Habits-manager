@@ -488,6 +488,9 @@ export default function HabitDetailsScreen() {
               .filter((entry) => entry.completed)
               .map((entry) => entry.date)
           );
+        const skippedDates = new Set(
+          habitEntries.filter((entry) => entry.skipped).map((entry) => entry.date)
+        );
         for (let index = 0; index < 3650; index += 1) {
           const key =
             getDateKey(
@@ -498,6 +501,10 @@ export default function HabitDetailsScreen() {
               ? isHabitAliveOnDate(habit, cursor)
               : isScheduledDay(habit, cursor);
           if (!scheduled) {
+            cursor = addDays(cursor, -1);
+            continue;
+          }
+          if (skippedDates.has(key)) {
             cursor = addDays(cursor, -1);
             continue;
           }

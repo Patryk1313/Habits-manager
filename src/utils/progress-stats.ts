@@ -37,6 +37,7 @@ export type ProgressEntry = {
   habitId: string;
   date: string;
   completed: boolean;
+  skipped?: boolean;
   completedAt?: string | null;
 };
 
@@ -272,6 +273,25 @@ const completedIndexCache = new WeakMap<
   Map<string, Set<string>>
 >();
 
+const skippedIndexCache = new WeakMap<ProgressEntry[], Map<string, Set<string>>>();
+
+function getSkippedIndex(entries: ProgressEntry[]) {
+  const cached = skippedIndexCache.get(entries);
+  if (cached) return cached;
+  const index = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    if (!entry.skipped) continue;
+    let dates = index.get(entry.habitId);
+    if (!dates) {
+      dates = new Set();
+      index.set(entry.habitId, dates);
+    }
+    dates.add(entry.date);
+  }
+  skippedIndexCache.set(entries, index);
+  return index;
+}
+
 // Indeks habitId -> zbiór dat. Zbiór usuwa też zdublowane wpisy z tego samego dnia.
 function getCompletedIndex(entries: ProgressEntry[]) {
   const cached = completedIndexCache.get(entries);
@@ -282,7 +302,7 @@ function getCompletedIndex(entries: ProgressEntry[]) {
   const index = new Map<string, Set<string>>();
 
   for (const entry of entries) {
-    if (!entry.completed) {
+    if (!entry.completed || entry.skipped) {
       continue;
     }
 
@@ -322,6 +342,7 @@ export function getTimesPerWeekStats(
 ) {
   const completedDates =
     getCompletedIndex(entries).get(habit.id) ?? new Set<string>();
+  const skippedDates = getSkippedIndex(entries).get(habit.id);
 
   let expected = 0;
   let completed = 0;
@@ -347,14 +368,16 @@ export function getTimesPerWeekStats(
     while (weekStart <= effectiveEnd) {
       const segmentStart = maxDate(weekStart, effectiveStart);
       const segmentEnd = minDate(addDays(weekStart, 6), effectiveEnd);
-      const availableDays =
-        differenceInDays(segmentEnd, segmentStart) + 1;
+      const days = eachDay(segmentStart, segmentEnd);
+      const availableDays = days.filter(
+        (day) => !skippedDates?.has(getDateKey(day))
+      ).length;
 
       availableDaysTotal += availableDays;
       expected += (target * availableDays) / 7;
 
       let completedThisWeek = 0;
-      for (const day of eachDay(segmentStart, segmentEnd)) {
+      for (const day of days) {
         if (completedDates.has(getDateKey(day))) {
           completedThisWeek += 1;
         }
@@ -422,6 +445,10 @@ export function calculateHabitBestStreak(
       continue;
     }
 
+    if (getSkippedIndex(entries).get(habit.id)?.has(getDateKey(date))) {
+      continue;
+    }
+
     if (hasCompletedEntry(entries, habit.id, date)) {
       currentStreak += 1;
       bestStreak = Math.max(bestStreak, currentStreak);
@@ -449,6 +476,7 @@ export function calculateProgressStats(
   range: ProgressRange
 ): ProgressStats {
   const index = getCompletedIndex(entries);
+  const skippedIndex = getSkippedIndex(entries);
   const activeDateKeys = new Set<string>();
   let expected = 0;
   let completed = 0;
@@ -472,6 +500,7 @@ export function calculateProgressStats(
 
       for (const date of eachDay(start, end)) {
         const key = getDateKey(date);
+        if (skippedIndex.get(habit.id)?.has(key)) continue;
         const done = completedDates?.has(key) ?? false;
 
         if (done) {
@@ -514,6 +543,10 @@ export function calculateDailyProgressStats(
   for (const habit of habits) {
     const segment = getSegmentAt(habit, day);
     if (!segment) {
+      continue;
+    }
+
+    if (getSkippedIndex(entries).get(habit.id)?.has(dateKey)) {
       continue;
     }
 
